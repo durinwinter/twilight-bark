@@ -8,8 +8,12 @@ twilight-proto = { path = "../twilight-proto" }
 twilight-core = { path = "../twilight-core" }
 twilight-bus = { path = "../twilight-bus" }
 twilight-mcp-server = { path = "../twilight-mcp-server" }
+twilight-traffic-controller = { path = "../twilight-traffic-controller" }
 anyhow = { workspace = true }
 tokio = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 log = { workspace = true }
 env_logger = { workspace = true }

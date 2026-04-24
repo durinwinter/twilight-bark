@@ -53,7 +53,13 @@ cargo build --workspace
 
 ## Observability
 
-Twilight Bark prioritizes observability. All traffic is logged to structured JSONL files via `twilight-eventlog`, enabling live monitoring with Nuze and comprehensive audit trails.
+Twilight Bark prioritizes observability. 
+
+1. **Event Logging**: All traffic is logged to structured JSONL files via `twilight-eventlog`.
+2. **NuZe Visualization**: Real-time traffic can be monitored using `NuZe` (Nushell). Use the following command to see live messages:
+   ```nushell
+   sub "twilight/**/signal/**" | from json | table
+   ```
 
 ## Roadmap
 

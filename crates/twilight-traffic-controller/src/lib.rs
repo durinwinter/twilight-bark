@@ -1,8 +1,8 @@
-use twilight_proto::twilight::{AgentPresence, AgentIdentity, MessageTarget, TargetKind};
+use twilight_proto::twilight::{AgentPresence, AgentIdentity, MessageTarget, TargetKind, Heartbeat};
 use dashmap::DashMap;
 use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use log::debug;
+use chrono::{DateTime, Utc, Duration};
+use log::{debug, info};
 
 pub struct RegistryEntry {
     pub identity: AgentIdentity,
@@ -31,6 +31,32 @@ impl TrafficController {
                 status: presence.status,
             });
         }
+    }
+
+    pub fn update_heartbeat(&self, heartbeat: Heartbeat) {
+        if let Some(mut entry) = self.registry.get_mut(&heartbeat.node_id) {
+            debug!("Heartbeat received for node: {}", heartbeat.node_id);
+            entry.last_seen = Utc::now();
+        }
+    }
+
+    pub fn cleanup_stale_agents(&self, timeout_seconds: i64) -> Vec<String> {
+        let now = Utc::now();
+        let timeout = Duration::seconds(timeout_seconds);
+        let mut stale_ids = Vec::new();
+
+        for entry in self.registry.iter() {
+            if now.signed_duration_since(entry.value().last_seen) > timeout {
+                stale_ids.push(entry.key().clone());
+            }
+        }
+
+        for id in &stale_ids {
+            info!("Removing stale agent: {}", id);
+            self.registry.remove(id);
+        }
+
+        stale_ids
     }
 
     pub fn get_targets(&self, target: &MessageTarget) -> Vec<String> {
@@ -67,5 +93,13 @@ impl TrafficController {
 
     pub fn get_all_identities(&self) -> Vec<AgentIdentity> {
         self.registry.iter().map(|entry| entry.value().identity.clone()).collect()
+    }
+
+    pub async fn run_cleanup_loop(self: Arc<Self>, interval_ms: u64, timeout_seconds: i64) {
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(interval_ms));
+        loop {
+            interval.tick().await;
+            self.cleanup_stale_agents(timeout_seconds);
+        }
     }
 }

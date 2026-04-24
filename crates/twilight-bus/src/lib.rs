@@ -4,6 +4,10 @@ use zenoh::Session;
 use zenoh::config::Config;
 use prost::Message;
 use std::sync::Arc;
+use futures::Stream;
+use std::pin::Pin;
+
+pub type BoxedStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
 pub struct TwilightBus {
     session: Arc<Session>,
@@ -68,11 +72,11 @@ impl TwilightBus {
         Ok(())
     }
 
-    pub async fn subscribe_presence(&self) -> Result<impl futures::Stream<Item = AgentPresence>> {
+    pub async fn subscribe_presence(&self) -> Result<BoxedStream<AgentPresence>> {
         let key = format!("twilight/{}/{}/presence/*", self.tenant, self.site);
         let subscriber = self.session.declare_subscriber(&key).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
-        
-        Ok(futures::stream::unfold(subscriber, |sub| async move {
+
+        let stream = futures::stream::unfold(subscriber, |sub| async move {
             match sub.recv_async().await {
                 Ok(sample) => {
                     let payload = sample.payload();
@@ -82,6 +86,41 @@ impl TwilightBus {
                 }
                 Err(_) => None,
             }
-        }))
+        });
+        Ok(Box::pin(stream))
+    }
+
+    pub async fn subscribe_traffic(&self) -> Result<BoxedStream<TwilightEnvelope>> {
+        let key = format!("twilight/{}/{}/traffic/*", self.tenant, self.site);
+        let subscriber = self.session.declare_subscriber(&key).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+        let stream = futures::stream::unfold(subscriber, |sub| async move {
+            match sub.recv_async().await {
+                Ok(sample) => {
+                    let data: Vec<u8> = sample.payload().to_bytes().to_vec();
+                    let envelope = TwilightEnvelope::decode(data.as_slice()).unwrap_or_default();
+                    Some((envelope, sub))
+                }
+                Err(_) => None,
+            }
+        });
+        Ok(Box::pin(stream))
+    }
+
+    pub async fn subscribe_heartbeat(&self) -> Result<BoxedStream<Heartbeat>> {
+        let key = format!("twilight/{}/{}/heartbeat/*", self.tenant, self.site);
+        let subscriber = self.session.declare_subscriber(&key).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+
+        let stream = futures::stream::unfold(subscriber, |sub| async move {
+            match sub.recv_async().await {
+                Ok(sample) => {
+                    let data: Vec<u8> = sample.payload().to_bytes().to_vec();
+                    let heartbeat = Heartbeat::decode(data.as_slice()).unwrap_or_default();
+                    Some((heartbeat, sub))
+                }
+                Err(_) => None,
+            }
+        });
+        Ok(Box::pin(stream))
     }
 }
