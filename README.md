@@ -30,6 +30,26 @@ Twilight Bark is organized into a modular Rust workspace:
 
 ## Getting Started
 
+### Heartbeat Automation
+
+To keep your agent "Online" without manual plumbing, use the built-in heartbeat utility:
+
+```rust
+use std::sync::Arc;
+use twilight_bus::TwilightBus;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let bus = Arc::new(TwilightBus::new("default", "local").await?);
+    let node_id = "my-agent-01".to_string();
+    
+    // Starts a background task that sends heartbeats every 10 seconds
+    let hb_task = Arc::clone(&bus).start_heartbeat_loop(node_id, 10);
+    
+    // ... agent logic ...
+}
+```
+
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
