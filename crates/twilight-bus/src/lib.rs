@@ -1,0 +1,73 @@
+use anyhow::Result;
+use twilight_proto::twilight::{TwilightEnvelope, AgentPresence, Heartbeat};
+use zenoh::Session;
+use zenoh::config::Config;
+use prost::Message;
+use std::sync::Arc;
+
+pub struct TwilightBus {
+    session: Arc<Session>,
+    tenant: String,
+    site: String,
+}
+
+impl TwilightBus {
+    pub async fn new(tenant: &str, site: &str) -> Result<Self> {
+        let config = Config::default();
+        let session = zenoh::open(config).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        Ok(Self {
+            session: Arc::new(session),
+            tenant: tenant.to_string(),
+            site: site.to_string(),
+        })
+    }
+
+    pub async fn publish_envelope(&self, envelope: &TwilightEnvelope) -> Result<()> {
+        let mut buf = Vec::new();
+        envelope.encode(&mut buf)?;
+        
+        let key = format!("twilight/{}/{}/traffic/{}", self.tenant, self.site, envelope.message_uuid);
+        self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        Ok(())
+    }
+
+    pub async fn publish_presence(&self, presence: &AgentPresence) -> Result<()> {
+        let mut buf = Vec::new();
+        presence.encode(&mut buf)?;
+        
+        let node_id = presence.identity.as_ref().map(|id| id.node_uuid.as_str()).unwrap_or("unknown");
+        let key = format!("twilight/{}/{}/presence/{}", self.tenant, self.site, node_id);
+        self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        Ok(())
+    }
+
+    pub async fn publish_heartbeat(&self, heartbeat: &Heartbeat) -> Result<()> {
+        let mut buf = Vec::new();
+        heartbeat.encode(&mut buf)?;
+        
+        let key = format!("twilight/{}/{}/heartbeat/{}", self.tenant, self.site, heartbeat.node_id);
+        self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        Ok(())
+    }
+
+    pub async fn subscribe_presence(&self) -> Result<impl futures::Stream<Item = AgentPresence>> {
+        let key = format!("twilight/{}/{}/presence/*", self.tenant, self.site);
+        let subscriber = self.session.declare_subscriber(&key).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        Ok(futures::stream::unfold(subscriber, |sub| async move {
+            match sub.recv_async().await {
+                Ok(sample) => {
+                    let payload = sample.payload();
+                    let data: Vec<u8> = payload.to_bytes().to_vec();
+                    let presence = AgentPresence::decode(data.as_slice()).unwrap_or_default();
+                    Some((presence, sub))
+                }
+                Err(_) => None,
+            }
+        }))
+    }
+}

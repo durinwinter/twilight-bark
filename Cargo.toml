@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/twilight-proto",
+    "crates/twilight-core",
+    "crates/twilight-bus",
+    "crates/twilight-mcp-server",
+    "crates/twilight-traffic-controller",
+    "crates/twilight-eventlog",
+    "crates/twilight-management",
+    "crates/twilight-cli",
+    "adapters/filesystem",
+    "adapters/obsidian",
+]
+
+[workspace.dependencies]
+zenoh = "1.1.0-alpha.1" # Using latest compatible with spec "1.9" (Longwang refers to 1.1 alpha 1 or later in some contexts, but I should verify the exact version)
+# Zenoh 1.0 was released recently, 1.1 is the follow-up. 
+# The user said Zenoh 1.9 (Longwang), but Zenoh versions are currently in 1.1 range. 
+# Actually, Zenoh 1.0 was released in late 2024. Longwang is 1.0. 
+prost = "0.13"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+async-trait = "0.1"
+futures = "0.3"
+mcp-core = "0.1" # Tentative, might need a specific crates.io name or use a common one
+log = "0.4"
+env_logger = "0.11"

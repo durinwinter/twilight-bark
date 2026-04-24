@@ -1,0 +1,15 @@
+[package]
+name = "twilight-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+twilight-proto = { path = "../twilight-proto" }
+twilight-core = { path = "../twilight-core" }
+twilight-bus = { path = "../twilight-bus" }
+twilight-mcp-server = { path = "../twilight-mcp-server" }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+log = { workspace = true }
+env_logger = { workspace = true }

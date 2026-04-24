@@ -1,0 +1,16 @@
+[package]
+name = "twilight-traffic-controller"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+twilight-proto = { path = "../twilight-proto" }
+twilight-core = { path = "../twilight-core" }
+twilight-bus = { path = "../twilight-bus" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+dashmap = "6" # For thread-safe registry

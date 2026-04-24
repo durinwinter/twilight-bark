@@ -1,0 +1,18 @@
+[package]
+name = "twilight-mcp-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+twilight-proto = { path = "../twilight-proto" }
+twilight-core = { path = "../twilight-core" }
+twilight-bus = { path = "../twilight-bus" }
+twilight-traffic-controller = { path = "../twilight-traffic-controller" }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+async-trait = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

@@ -1,0 +1,17 @@
+[package]
+name = "twilight-bus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+twilight-proto = { path = "../twilight-proto" }
+twilight-core = { path = "../twilight-core" }
+zenoh = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

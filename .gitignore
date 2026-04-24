@@ -1,0 +1,30 @@
+# Build artifacts
+target/
+
+# Dependency directories
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+
+# Environment variables
+.env
+*.env
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Zenoh files
+*.znip
+zenoh.db
+
+# Credentials
+*.key
+*.pem
+*.pcap
+
+# Local logs
+*.log
+*.jsonl

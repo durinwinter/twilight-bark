@@ -1,0 +1,13 @@
+[package]
+name = "twilight-management"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+twilight-proto = { path = "../twilight-proto" }
+twilight-core = { path = "../twilight-core" }
+twilight-bus = { path = "../twilight-bus" }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
