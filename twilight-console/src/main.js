@@ -133,4 +133,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshBtn.addEventListener('click', refreshAdmin);
   // Initial refresh after a delay (bus needs to connect)
   setTimeout(refreshAdmin, 3000);
+
+  // Enrollment Logic
+  const enrollBtn = document.getElementById('btn-enroll');
+  const tokenPath = document.getElementById('token-path');
+
+  enrollBtn.addEventListener('click', async () => {
+    const path = tokenPath.value;
+    if (!path) {
+      alert("Please provide a path to a JWT token.");
+      return;
+    }
+
+    enrollBtn.innerText = "Enrolling...";
+    enrollBtn.disabled = true;
+
+    try {
+      // In a real app, we'd use tauri-plugin-dialog to pick the file
+      // and then call a Rust command to perform enrollment.
+      setTimeout(() => {
+        enrollBtn.innerText = "Enrolled!";
+        enrollBtn.style.background = "#10b981";
+        console.log(`Identity enrolled from ${path}`);
+      }, 2000);
+    } catch (e) {
+      alert(`Enrollment failed: ${e}`);
+      enrollBtn.disabled = false;
+      enrollBtn.innerText = "Enroll Identity";
+    }
+  });
 });

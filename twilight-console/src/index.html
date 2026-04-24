@@ -45,15 +45,21 @@
         </header>
         <div class="config-grid">
           <div class="card glass">
-            <h3>Active Identity</h3>
-            <div class="id-badge">default-node.json</div>
-            <button class="btn-primary">Enroll New Identity</button>
+            <h3>Onboard Local Node</h3>
+            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Select your .jwt enrollment
+              token to join the network.</p>
+            <div class="enroll-form">
+              <input type="text" id="token-path" placeholder="Path to identity.jwt..." class="id-badge"
+                style="width: 100%; margin-bottom: 0.5rem;">
+              <button class="btn-primary" id="btn-enroll" style="width: 100%;">Enroll Identity</button>
+            </div>
           </div>
           <div class="card glass">
-            <h3>Tunnel Status</h3>
-            <div class="status-row">
-              <span>Intercepts: 12</span>
-              <span class="tag">UP</span>
+            <h3>Network ID</h3>
+            <div class="id-badge" id="network-id">bark-internal-v1</div>
+            <div style="margin-top: 1rem; font-size: 0.8rem;">
+              <span>Controller:</span>
+              <span style="color: var(--accent-color)">ziti.bark.io</span>
             </div>
           </div>
         </div>
