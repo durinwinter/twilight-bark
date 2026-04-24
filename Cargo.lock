@@ -3374,6 +3374,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "twilight-ziti"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "serde",
+ "serde_json",
+ "twilight-proto",
+]
+
+[[package]]
 name = "twox-hash"
 version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

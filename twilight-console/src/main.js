@@ -69,4 +69,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     monitor.scrollTop = monitor.scrollHeight;
   }
+
+  // Analytics Polling
+  const sankeyDiv = document.getElementById('sankey-chart');
+  setInterval(async () => {
+    try {
+      const stats = await invoke("get_analytics");
+      if (stats.edges.length > 0) {
+        sankeyDiv.innerHTML = `
+          <div style="width: 100%; padding: 2rem;">
+            <h4 style="margin-bottom: 1rem; color: #8b5cf6;">Active Traffic Edges: ${stats.edges.length}</h4>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              ${stats.edges.map(edge => `
+                <div class="glass" style="padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                  <span>${edge.source.substring(0, 8)}... → ${edge.target.substring(0, 8)}...</span>
+                  <span class="tag" style="background: #8b5cf6">${edge.weight} PKTS</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        sankeyDiv.innerHTML = '<div class="chart-placeholder">Waiting for traffic data...</div>';
+      }
+    } catch (e) {
+      console.error("Failed to fetch analytics:", e);
+    }
+  }, 3000);
 });

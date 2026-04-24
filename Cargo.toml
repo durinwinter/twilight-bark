@@ -9,7 +9,7 @@ members = [
     "crates/twilight-eventlog",
     "crates/twilight-cli",
     "adapters/filesystem",
-    "adapters/obsidian",
+    "adapters/obsidian", "crates/twilight-ziti",
 ]
 
 [workspace.dependencies]
