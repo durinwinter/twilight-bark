@@ -3233,15 +3233,13 @@ name = "twilight-bus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-trait",
- "chrono",
  "futures",
  "log",
  "prost",
+ "serde",
+ "serde_json",
  "tokio",
- "twilight-core",
  "twilight-proto",
- "uuid",
  "zenoh",
 ]
 

@@ -30,6 +30,16 @@ impl TwilightBus {
         let key = format!("twilight/{}/{}/traffic/{}", self.tenant, self.site, envelope.message_uuid);
         self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
         
+        // Also publish to signal mirror for NuZe/visualization
+        self.publish_signal_json(envelope, "traffic").await?;
+        
+        Ok(())
+    }
+
+    async fn publish_signal_json<T: serde::Serialize>(&self, data: &T, kind: &str) -> Result<()> {
+        let json = serde_json::to_string(data)?;
+        let key = format!("twilight/{}/{}/signal/{}", self.tenant, self.site, kind);
+        self.session.put(&key, json).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
         Ok(())
     }
 
@@ -41,6 +51,8 @@ impl TwilightBus {
         let key = format!("twilight/{}/{}/presence/{}", self.tenant, self.site, node_id);
         self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
         
+        self.publish_signal_json(presence, "presence").await?;
+        
         Ok(())
     }
 
@@ -50,6 +62,8 @@ impl TwilightBus {
         
         let key = format!("twilight/{}/{}/heartbeat/{}", self.tenant, self.site, heartbeat.node_id);
         self.session.put(&key, buf).await.map_err(|e| anyhow::anyhow!("{:?}", e))?;
+        
+        self.publish_signal_json(heartbeat, "heartbeat").await?;
         
         Ok(())
     }
