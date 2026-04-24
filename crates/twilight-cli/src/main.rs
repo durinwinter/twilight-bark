@@ -34,6 +34,8 @@ enum Commands {
     SmokeTest,
     /// Run a live A2A coordination scenario (Observer & Worker)
     ScenarioA2a,
+    /// Run the 4-dog multi-provider demonstration (Claude & LM Studio nodes)
+    ScenarioDogs,
     /// Inject a manual task request into the fabric
     Inject {
         #[arg(short, long)]
@@ -114,6 +116,10 @@ async fn main() -> Result<()> {
 
         Commands::ScenarioA2a => {
             run_scenario_a2a().await?;
+        }
+
+        Commands::ScenarioDogs => {
+            run_scenario_dogs().await?;
         }
 
         Commands::Inject { operation, input, target_uuid } => {
@@ -266,6 +272,118 @@ async fn run_scenario_a2a() -> Result<()> {
 
     println!("\nScenario complete. Press Ctrl+C to exit (keeping heartbeats active for Console monitoring).");
     tokio::signal::ctrl_c().await?;
+    Ok(())
+}
+
+async fn run_scenario_dogs() -> Result<()> {
+    println!("--- [SCENARIO: Multi-Dog / Multi-Provider] ---");
+    
+    // Virtual Providers
+    let providers = ["claude-node", "lms-node"];
+    let dogs = [
+        ("beagle", "scout", 0),
+        ("terrier", "processor", 0),
+        ("husky", "scout", 1),
+        ("boxer", "processor", 1),
+    ];
+
+    let mut buses = Vec::new();
+    let mut tasks = Vec::new();
+
+    for (name, role, p_idx) in dogs {
+        let bus = Arc::new(TwilightBus::new("default", providers[p_idx]).await?);
+        let identity = create_default_identity(&format!("{}-{}", providers[p_idx], name), role);
+        
+        println!("[{}] Agent {}-{} joining the fabric.", providers[p_idx].to_uppercase(), name, role);
+        
+        bus.publish_presence(&create_presence(identity.clone(), AgentStatus::Online)).await?;
+        
+        // Start independent heartbeats
+        let hb_task = Arc::clone(&bus).start_heartbeat_loop(identity.node_uuid.clone(), 5);
+        tasks.push(hb_task);
+        
+        // Listener for traffic
+        let mut traffic_stream = bus.subscribe_traffic().await?;
+        let b = Arc::clone(&bus);
+        let id_clone = identity.clone();
+        
+        tokio::spawn(async move {
+            while let Some(envelope) = traffic_stream.next().await {
+                if let Some(Payload::TaskRequest(req)) = envelope.payload {
+                    println!("[{}] Received task: {}", id_clone.agent_name, req.operation);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    
+                    let reply = TwilightEnvelope {
+                        message_uuid: Uuid::new_v4().to_string(),
+                        correlation_uuid: req.task_id.clone(),
+                        causation_uuid: envelope.message_uuid.clone(),
+                        source: Some(id_clone.clone()),
+                        target: envelope.source.as_ref().map(|s| {
+                            let mut t = MessageTarget::default();
+                            t.set_target_kind(TargetKind::Unicast);
+                            t.target_agent_uuids.push(s.node_uuid.clone());
+                            t
+                        }),
+                        kind: MessageKind::TaskResult as i32,
+                        priority: 2,
+                        created_unix_ms: Utc::now().timestamp_millis(),
+                        expires_unix_ms: Utc::now().timestamp_millis() + 30000,
+                        tags: vec!["dog-scenario".to_string()],
+                        payload: Some(Payload::TaskResult(TaskResult {
+                            task_id: req.task_id.clone(),
+                            output_json: r#"{"status": "barked"}"#.to_string(),
+                            success: true,
+                            error_message: String::new(),
+                        })),
+                    };
+                    let _ = b.publish_envelope(&reply).await;
+                }
+            }
+        });
+
+        buses.push((bus, identity));
+    }
+
+    println!("\n[FABRIC] 4 Dogs registered and heartbeating.");
+    println!("[FABRIC] Simulating cross-provider bark-exchange...");
+
+    // Beagle (Claude) tasks Boxer (LMS)
+    let beagle = &buses[0];
+    let boxer = &buses[3];
+    
+    let task_id = Uuid::new_v4().to_string();
+    let mut target = MessageTarget::default();
+    target.set_target_kind(TargetKind::Unicast);
+    target.target_agent_uuids.push(boxer.1.node_uuid.clone());
+
+    let req = TwilightEnvelope {
+        message_uuid: Uuid::new_v4().to_string(),
+        correlation_uuid: task_id.clone(),
+        causation_uuid: String::new(),
+        source: Some(beagle.1.clone()),
+        target: Some(target),
+        kind: MessageKind::TaskRequest as i32,
+        priority: 2,
+        created_unix_ms: Utc::now().timestamp_millis(),
+        expires_unix_ms: Utc::now().timestamp_millis() + 30000,
+        tags: vec!["cross-provider"].iter().map(|s| s.to_string()).collect(),
+        payload: Some(Payload::TaskRequest(TaskRequest {
+            task_id,
+            operation: "bark_echo".to_string(),
+            input_json: r#"{"volume": "high"}"#.to_string(),
+            timeout_ms: 10000,
+        })),
+    };
+
+    println!("[BEAGLE -> BOXER] Sending cross-provider bark...");
+    beagle.0.publish_envelope(&req).await?;
+
+    println!("\nAll agents active. Press Ctrl+C to terminate the scenario.");
+    tokio::signal::ctrl_c().await?;
+    
+    for t in tasks {
+        t.abort();
+    }
     Ok(())
 }
 
