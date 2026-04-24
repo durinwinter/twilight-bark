@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
 
             let controller = Arc::new(TrafficController::new());
             
-            // Wire in heartbeat updates
+            // Wire in heartbeat monitoring
             let hb_bus = Arc::clone(&bus);
             let hb_controller = Arc::clone(&controller);
             tokio::spawn(async move {
@@ -73,28 +73,12 @@ async fn main() -> Result<()> {
             let cleanup_controller = Arc::clone(&controller);
             tokio::spawn(cleanup_controller.run_cleanup_loop(5000, 30));
 
-            let hb_bus = Arc::clone(&bus);
-            let node_id = identity.node_uuid.clone();
-            let heartbeat_task = tokio::spawn(async move {
-                let mut interval = tokio::time::interval(Duration::from_secs(10));
-                loop {
-                    interval.tick().await;
-                    let hb = Heartbeat {
-                        node_id: node_id.clone(),
-                        status: AgentStatus::Online as i32,
-                        timestamp_unix_ms: Utc::now().timestamp_millis(),
-                        active_tasks: 0,
-                        queued_tasks: 0,
-                    };
-                    if let Err(e) = hb_bus.publish_heartbeat(&hb).await {
-                        log::warn!("Heartbeat failed: {e}");
-                    }
-                }
-            });
+            // Start automated heartbeat for THIS node
+            let hb_task = Arc::clone(&bus).start_heartbeat_loop(identity.node_uuid.clone(), 10);
 
             tokio::signal::ctrl_c().await?;
             println!("Shutting down.");
-            heartbeat_task.abort();
+            hb_task.abort();
         }
 
         Commands::List => {

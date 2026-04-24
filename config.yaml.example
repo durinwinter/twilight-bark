@@ -1,0 +1,41 @@
+# Twilight Bark - Unified Configuration Example
+# This file outlines the standard configuration parameters for a Twilight Bark node.
+
+# Identity & Topology
+tenant: "default"
+site: "local"
+region: "us-west"
+
+# Node Configuration
+node:
+  name: "twilight-node-01"
+  kind: "agent"               # agent, adapter, controller, human
+  roles: ["worker", "processor"]
+  capabilities: ["file-access", "mcp-tools"]
+
+# Communication (Zenoh)
+bus:
+  scouting: true
+  scouting_delay_ms: 500
+  timeout_ms: 5000
+
+# Lifecycle & Health
+lifecycle:
+  heartbeat_interval_secs: 10
+  stale_timeout_secs: 30
+  cleanup_interval_ms: 5000
+
+# Observability
+logging:
+  level: "info"
+  event_log_path: "./logs/events.jsonl"
+  log_to_stdout: true
+
+# Adapters (Optional)
+adapters:
+  filesystem:
+    watch_path: "./data"
+    scan_interval_secs: 60
+  obsidian:
+    vault_path: "/path/to/vault"
+    watch_frontmatter: true

@@ -1,11 +1,13 @@
 use anyhow::Result;
-use twilight_proto::twilight::{TwilightEnvelope, AgentPresence, Heartbeat};
+use twilight_proto::twilight::{TwilightEnvelope, AgentPresence, Heartbeat, AgentStatus};
 use zenoh::Session;
 use zenoh::config::Config;
 use prost::Message;
 use std::sync::Arc;
 use futures::Stream;
 use std::pin::Pin;
+use chrono::Utc;
+use tokio::task::JoinHandle;
 
 pub type BoxedStream<T> = Pin<Box<dyn Stream<Item = T> + Send>>;
 
@@ -70,6 +72,26 @@ impl TwilightBus {
         self.publish_signal_json(heartbeat, "heartbeat").await?;
         
         Ok(())
+    }
+
+    /// Spawns a background task that periodically publishes heartbeats for this node.
+    pub fn start_heartbeat_loop(self: Arc<Self>, node_id: String, interval_secs: u64) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            loop {
+                interval.tick().await;
+                let hb = Heartbeat {
+                    node_id: node_id.clone(),
+                    status: AgentStatus::Online as i32,
+                    timestamp_unix_ms: Utc::now().timestamp_millis(),
+                    active_tasks: 0,
+                    queued_tasks: 0,
+                };
+                if let Err(e) = self.publish_heartbeat(&hb).await {
+                    log::warn!("Automated heartbeat failed: {:?}", e);
+                }
+            }
+        })
     }
 
     pub async fn subscribe_presence(&self) -> Result<BoxedStream<AgentPresence>> {
