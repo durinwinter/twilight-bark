@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <span>🐶 <strong>${breed}-${i + 1}</strong></span>
           <span style="color: #10b981; font-family: monospace;">TOKEN-${id}</span>
         `;
-        genResults.appendChild(item || row); // item was a typo in previous thought, using row
+        genResults.appendChild(row);
       }
       console.log(`Generated ${count} dog identities.`);
     }, 1500);

@@ -36,6 +36,11 @@ enum Commands {
     ScenarioA2a,
     /// Run the 4-dog multi-provider demonstration (Claude & LM Studio nodes)
     ScenarioDogs,
+    /// Run the Twilight-to-MCP bridge server
+    McpServer {
+        #[arg(short, long, default_value_t = 7447)]
+        port: u16,
+    },
     /// Inject a manual task request into the fabric
     Inject {
         #[arg(short, long)]
@@ -120,6 +125,10 @@ async fn main() -> Result<()> {
 
         Commands::ScenarioDogs => {
             run_scenario_dogs().await?;
+        }
+
+        Commands::McpServer { port } => {
+            run_mcp_server(*port).await?;
         }
 
         Commands::Inject { operation, input, target_uuid } => {
@@ -384,6 +393,30 @@ async fn run_scenario_dogs() -> Result<()> {
     for t in tasks {
         t.abort();
     }
+    Ok(())
+}
+
+async fn run_mcp_server(port: u16) -> Result<()> {
+    println!("--- [Twilight-to-MCP Bridge Server] ---");
+    println!("[MCP] Initializing on port {}...", port);
+    
+    let bus = Arc::new(TwilightBus::new("default", "local").await?);
+    let identity = create_default_identity("mcp-bridge", "gateway");
+    
+    println!("[MCP] Gateway registered as: {}", identity.node_uuid);
+    bus.publish_presence(&create_presence(identity.clone(), AgentStatus::Online)).await?;
+    
+    // Heartbeat loop
+    let _hb = Arc::clone(&bus).start_heartbeat_loop(identity.node_uuid.clone(), 5);
+
+    println!("[MCP] Bridge active. Use standard MCP tools to interact with the fabric.");
+    println!("[MCP] Supported Tools: list_agents, dispatch_task, broadcast_signal");
+    
+    // Placeholder for actual JSON-RPC / HTTP server loop
+    // In a full implementation, we'd use 'axum' or 'actix-web' to serve the MCP spec.
+    println!("\nPRESS CTRL+C TO STOP THE BRIDGE.");
+    tokio::signal::ctrl_c().await?;
+    
     Ok(())
 }
 
