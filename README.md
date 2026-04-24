@@ -1,12 +1,21 @@
+<p align="center">
+  <img src="twilight-bark-logo.png" alt="Twilight Bark Logo" width="300px">
+</p>
+
 # Twilight Bark
+
+[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![Zenoh](https://img.shields.io/badge/zenoh-1.9%20Longwang-orange)](https://zenoh.io)
+[![Rust](https://img.shields.io/badge/rustc-1.75%2B-brightgreen)](https://www.rust-lang.org)
+[![MCP](https://img.shields.io/badge/mcp-native-purple)](https://modelcontextprotocol.io)
 
 **Twilight Bark** is a distributed agent communication fabric designed for high-performance, observable, and multi-tenant agent coordination. Built on **Zenoh 1.9 (Longwang)** and **Protobuf**, it provides a robust infrastructure for agents to discover each other, exchange tasks, and share observations across heterogeneous environments.
 
 ## Core Concepts
 
 - **Agent Identity**: Every participant in the fabric has a cryptographic-grade UUID and role-based identity.
-- **The Bus**: A Zenoh-powered transport layer that handles real-time pub/sub and distributed queries.
-- **Traffic Controller**: A decentralized registry and routing engine that tracks agent presence and directs message flow.
+- **The Bus**: A Zenoh-powered transport layer that handles real-time pub/sub and distributed queries across edge, fog, and cloud.
+- **Traffic Controller**: A decentralized registry and routing engine that tracks agent presence and directs message flow with minimal latency.
 - **MCP Native**: Out-of-the-box support for Model Context Protocol (MCP), allowing AI agents to interact with the fabric as a suite of tools.
 
 ## System Architecture
@@ -14,9 +23,9 @@
 Twilight Bark is organized into a modular Rust workspace:
 
 - `twilight-bus`: Low-level Zenoh integration and transport.
-- `twilight-traffic-controller`: Registry management and routing logic.
-- `twilight-mcp-server`: Gateway for LLM-based agents to interact with the fabric.
-- `twilight-eventlog`: High-fidelity JSONL logging for all fabric traffic.
+- `twilight-traffic-controller`: Registry management and routing logic (Unicast, Multicast, Broadcast).
+- `twilight-mcp-server`: Gateway for LLM-based agents to interact with the fabric via standardized tools.
+- `twilight-eventlog`: High-fidelity JSONL logging for all fabric traffic, designed for post-analysis and auditing.
 - `adapters/`: Specialized connectors for external systems (e.g., Filesystem, Obsidian).
 
 ## Getting Started
@@ -24,7 +33,7 @@ Twilight Bark is organized into a modular Rust workspace:
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
-- [Zenoh Router](https://zenoh.io/docs/getting-started/installation/) 1.1-alpha (optional but recommended for observability)
+- [Zenoh Router](https://zenoh.io/docs/getting-started/installation/) 1.1-alpha (optional for full mesh capabilities)
 
 ### Build
 
@@ -34,17 +43,21 @@ cargo build --workspace
 
 ### Usage
 
-1. **Start the Traffic Controller**:
+1. **Start a Traffic Controller Node**:
    ```bash
    cargo run -p twilight-cli -- start-node
    ```
 
-2. **Connect an MCP Agent**:
-   Point your MCP-compatible client to the `twilight-mcp-server` binary.
+2. **Connecting Agents**:
+   Agents use the `twilight-mcp-server` to join the fabric. Configure your MCP client to point to the server binary.
 
 ## Observability
 
-All traffic in Twilight Bark is logged to structured JSONL files via the `twilight-eventlog`. This allows for post-mortem analysis, audit trails, and live monitoring integration with tools like Nuze.
+Twilight Bark prioritizes observability. All traffic is logged to structured JSONL files via `twilight-eventlog`, enabling live monitoring with Nuze and comprehensive audit trails.
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for the strategic vision and upcoming features.
 
 ## License
 
