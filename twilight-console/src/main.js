@@ -97,4 +97,40 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error("Failed to fetch analytics:", e);
     }
   }, 3000);
+
+  // Zenoh Admin Logic
+  const adminTree = document.getElementById('admin-tree');
+  const refreshBtn = document.getElementById('refresh-admin');
+
+  async function refreshAdmin() {
+    adminTree.innerHTML = '<div class="placeholder">Querying...</div>';
+    try {
+      const keys = await invoke("get_admin_data");
+      if (keys.length === 0) {
+        adminTree.innerHTML = '<div class="placeholder">No admin data found.</div>';
+        return;
+      }
+
+      adminTree.innerHTML = '';
+      keys.sort().forEach(key => {
+        const item = document.createElement('div');
+        item.style.padding = '0.25rem 0';
+        item.style.borderBottom = '1px solid rgba(255,255,255,0.02)';
+
+        // Color coding for common patterns
+        let color = '#a1a1aa';
+        if (key.includes('sessions')) color = '#8b5cf6';
+        if (key.includes('config')) color = '#10b981';
+
+        item.innerHTML = `<span style="color: ${color}">●</span> ${key}`;
+        adminTree.appendChild(item);
+      });
+    } catch (e) {
+      adminTree.innerHTML = `<div style="color: #ef4444">Error: ${e}</div>`;
+    }
+  }
+
+  refreshBtn.addEventListener('click', refreshAdmin);
+  // Initial refresh after a delay (bus needs to connect)
+  setTimeout(refreshAdmin, 3000);
 });

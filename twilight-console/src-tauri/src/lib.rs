@@ -75,6 +75,24 @@ async fn get_analytics(state: State<'_, AppState>) -> Result<AnalyticsSnapshot, 
     Ok(state.controller.get_analytics_snapshot())
 }
 
+#[tauri::command]
+async fn get_admin_data(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let bus_guard = state.bus.lock().await;
+    let bus = bus_guard.as_ref().ok_or("Bus not connected")?;
+    
+    // Query zenoh admin space
+    let mut keys = Vec::new();
+    if let Ok(mut replies) = bus.session.get("zenoh/admin/**").await {
+        while let Some(reply) = replies.next().await {
+            if let Ok(sample) = reply.sample {
+                keys.push(sample.key_expression.to_string());
+            }
+        }
+    }
+    
+    Ok(keys)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -83,7 +101,7 @@ pub fn run() {
             bus: Mutex::new(None),
             controller: Arc::new(TrafficController::new()),
         })
-        .invoke_handler(tauri::generate_handler![connect_bus, get_analytics])
+        .invoke_handler(tauri::generate_handler![connect_bus, get_analytics, get_admin_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
