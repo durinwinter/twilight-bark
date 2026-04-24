@@ -3284,19 +3284,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "twilight-management"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
- "serde",
- "serde_json",
- "twilight-bus",
- "twilight-core",
- "twilight-proto",
-]
-
-[[package]]
 name = "twilight-mcp-server"
 version = "0.1.0"
 dependencies = [

@@ -7,7 +7,6 @@ members = [
     "crates/twilight-mcp-server",
     "crates/twilight-traffic-controller",
     "crates/twilight-eventlog",
-    "crates/twilight-management",
     "crates/twilight-cli",
     "adapters/filesystem",
     "adapters/obsidian",
