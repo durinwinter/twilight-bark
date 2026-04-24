@@ -29,6 +29,9 @@
         <button class="nav-item" data-tab="flow">
           <span class="icon">📊</span> Analytics
         </button>
+        <button class="nav-item" data-tab="admin-suite">
+          <span class="icon">👑</span> Management
+        </button>
       </nav>
       <div class="system-status">
         <div class="status-dot online"></div>
@@ -111,6 +114,35 @@
         <div class="chart-container glass">
           <div id="sankey-chart" class="chart-placeholder">
             [Sankey Visualization Engine Initializing]
+          </div>
+        </div>
+      </section>
+
+      <!-- Admin Suite Tab -->
+      <section id="tab-admin-suite" class="tab-content">
+        <header class="tab-header">
+          <h1>Fabric Management</h1>
+          <p>Admin tools for network-wide identity and security control.</p>
+        </header>
+        <div class="config-grid">
+          <div class="card glass">
+            <h3>Create Network</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+              <input type="text" placeholder="Network Name (e.g. bark-labs)" class="id-badge">
+              <input type="text" placeholder="Controller URL" class="id-badge">
+              <button class="btn-primary">Provision Network</button>
+            </div>
+          </div>
+          <div class="card glass">
+            <h3>Identity Factory</h3>
+            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Bulk generate dog-themed
+              enrollment tokens for your team.</p>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="number" id="gen-count" value="15" class="id-badge" style="width: 80px;">
+              <button class="btn-primary" id="btn-generate-bulk" style="flex: 1;">Generate Pack</button>
+            </div>
+            <div id="gen-results" style="margin-top: 1rem; max-height: 200px; overflow-y: auto; font-size: 0.8rem;">
+            </div>
           </div>
         </div>
       </section>

@@ -162,4 +162,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       enrollBtn.innerText = "Enroll Identity";
     }
   });
+
+  // Bulk Generator Logic
+  const genBtn = document.getElementById('btn-generate-bulk');
+  const genResults = document.getElementById('gen-results');
+  const dogBreeds = ['Beagle', 'Husky', 'Boxer', 'Terrier', 'Collie', 'Retriever', 'Spaniel', 'Dachshund', 'Poodle', 'Mastiff', 'Greyhound', 'Shiba', 'Corgi', 'Bulldog', 'Maltese'];
+
+  genBtn.addEventListener('click', () => {
+    const count = parseInt(document.getElementById('gen-count').value) || 15;
+    genResults.innerHTML = '<div class="placeholder">Breeding pack...</div>';
+
+    setTimeout(() => {
+      genResults.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        const breed = dogBreeds[i % dogBreeds.length];
+        const id = Math.random().toString(36).substring(2, 10).toUpperCase();
+        const row = document.createElement('div');
+        row.className = 'glass';
+        row.style.padding = '0.5rem';
+        row.style.marginBottom = '0.25rem';
+        row.style.display = 'flex';
+        row.style.justifyContent = 'space-between';
+        row.innerHTML = `
+          <span>🐶 <strong>${breed}-${i + 1}</strong></span>
+          <span style="color: #10b981; font-family: monospace;">TOKEN-${id}</span>
+        `;
+        genResults.appendChild(item || row); // item was a typo in previous thought, using row
+      }
+      console.log(`Generated ${count} dog identities.`);
+    }, 1500);
+  });
 });
