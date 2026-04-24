@@ -1,0 +1,29 @@
+[package]
+name = "twilight-console"
+version = "0.1.0"
+description = "Management Console for Twilight Bark"
+authors = ["Twilight Bark Project"]
+edition = "2021"
+
+[lib]
+name = "twilight_console_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+
+# Twilight Bark Crates
+twilight-bus = { path = "../../crates/twilight-bus" }
+twilight-proto = { path = "../../crates/twilight-proto" }
+twilight-traffic-controller = { path = "../../crates/twilight-traffic-controller" }
+twilight-core = { path = "../../crates/twilight-core" }

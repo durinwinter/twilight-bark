@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tauri App</title>
+  <script type="module" src="/main.js" defer></script>
+</head>
+
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/assets/logo.png" alt="Twilight Bark" class="logo" />
+        <span class="brand-text">Twilight Bark</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="ziti">
+          <span class="icon">🛡️</span> OpenZiti
+        </button>
+        <button class="nav-item" data-tab="zenoh">
+          <span class="icon">⚡</span> Zenoh Admin
+        </button>
+        <button class="nav-item" data-tab="bark">
+          <span class="icon">📢</span> Live Bus
+        </button>
+        <button class="nav-item" data-tab="flow">
+          <span class="icon">📊</span> Analytics
+        </button>
+      </nav>
+      <div class="system-status">
+        <div class="status-dot online"></div>
+        <span>Bus Online</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      <!-- Ziti Tab -->
+      <section id="tab-ziti" class="tab-content active">
+        <header class="tab-header">
+          <h1>OpenZiti Tunneler</h1>
+          <p>Manage zero-trust identities and secure overlays.</p>
+        </header>
+        <div class="config-grid">
+          <div class="card glass">
+            <h3>Active Identity</h3>
+            <div class="id-badge">default-node.json</div>
+            <button class="btn-primary">Enroll New Identity</button>
+          </div>
+          <div class="card glass">
+            <h3>Tunnel Status</h3>
+            <div class="status-row">
+              <span>Intercepts: 12</span>
+              <span class="tag">UP</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Zenoh Tab -->
+      <section id="tab-zenoh" class="tab-content">
+        <header class="tab-header">
+          <h1>Zenoh Admin Space</h1>
+          <p>Real-time inspection of the operational space.</p>
+        </header>
+        <div class="admin-space glass">
+          <div class="tree-view placeholder">
+            Scanning zenoh://admin/** ...
+          </div>
+        </div>
+      </section>
+
+      <!-- Monitor Tab -->
+      <section id="tab-bark" class="tab-content">
+        <header class="tab-header">
+          <h1>Live Message Bus</h1>
+          <p>Visualizing real-time agentic traffic.</p>
+        </header>
+        <div class="message-list glass" id="bus-monitor">
+          <div class="list-headers">
+            <span>Time</span>
+            <span>Kind</span>
+            <span>Source</span>
+            <span>Payload</span>
+          </div>
+          <!-- Dynamic content -->
+        </div>
+      </section>
+
+      <!-- Analytics Tab -->
+      <section id="tab-flow" class="tab-content">
+        <header class="tab-header">
+          <h1>Traffic Analytics</h1>
+          <p>Agent-to-agent message flow (Sankey Diagram).</p>
+        </header>
+        <div class="chart-container glass">
+          <div id="sankey-chart" class="chart-placeholder">
+            [Sankey Visualization Engine Initializing]
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+
+</html>
