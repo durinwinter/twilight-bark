@@ -93,6 +93,15 @@ async fn get_admin_data(state: State<'_, AppState>) -> Result<Vec<String>, Strin
     Ok(keys)
 }
 
+#[tauri::command]
+async fn start_mcp_bridge(port: u16, state: State<'_, AppState>) -> Result<String, String> {
+    // In a real implementation, we'd spawn a background task with the MCP server
+    // For now, we'll simulate the successful start
+    println!("[TAURI] Starting MCP Bridge on port {}", port);
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    Ok(format!("Bridge started on port {}", port))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -101,7 +110,12 @@ pub fn run() {
             bus: Mutex::new(None),
             controller: Arc::new(TrafficController::new()),
         })
-        .invoke_handler(tauri::generate_handler![connect_bus, get_analytics, get_admin_data])
+        .invoke_handler(tauri::generate_handler![
+            connect_bus, 
+            get_analytics, 
+            get_admin_data,
+            start_mcp_bridge
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -59,10 +59,23 @@
           </div>
           <div class="card glass">
             <h3>Network ID</h3>
-            <div class="id-badge" id="network-id">bark-internal-v1</div>
-            <div style="margin-top: 1rem; font-size: 0.8rem;">
+            <input type="text" id="net-id-input" placeholder="Paste Network ID..." class="id-badge"
+              style="width: 100%; margin-bottom: 0.5rem;" value="bark-internal-v1">
+            <div style="font-size: 0.8rem;">
               <span>Controller:</span>
               <span style="color: var(--accent-color)">ziti.bark.io</span>
+            </div>
+          </div>
+          <div class="card glass" style="grid-column: span 2;">
+            <h3>Twilight MCP Bridge</h3>
+            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Expose this node to your
+              LLM clients (Claude, Gemini, LM Studio).</p>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+              <div style="flex: 1;">
+                <label style="font-size: 0.7rem; color: var(--text-secondary);">BRIDGE PORT</label>
+                <input type="number" id="mcp-port" value="7447" class="id-badge" style="width: 100%;">
+              </div>
+              <button class="btn-primary" id="btn-toggle-bridge" style="height: 48px; flex: 2;">Launch Bridge</button>
             </div>
           </div>
         </div>

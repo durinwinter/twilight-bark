@@ -163,6 +163,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // MCP Bridge Logic
+  const bridgeBtn = document.getElementById('btn-toggle-bridge');
+  const mcpPort = document.getElementById('mcp-port');
+  let bridgeRunning = false;
+
+  bridgeBtn.addEventListener('click', async () => {
+    if (!bridgeRunning) {
+      bridgeBtn.innerText = "Launching...";
+      bridgeBtn.disabled = true;
+      try {
+        await invoke("start_mcp_bridge", { port: parseInt(mcpPort.value) });
+        bridgeRunning = true;
+        bridgeBtn.innerText = "Stop Bridge";
+        bridgeBtn.style.background = "#ef4444";
+        bridgeBtn.disabled = false;
+      } catch (e) {
+        alert(`Failed to start bridge: ${e}`);
+        bridgeBtn.innerText = "Launch Bridge";
+        bridgeBtn.disabled = false;
+      }
+    } else {
+      bridgeRunning = false;
+      bridgeBtn.innerText = "Launch Bridge";
+      bridgeBtn.style.background = "var(--primary-gradient)";
+    }
+  });
+
   // Bulk Generator Logic
   const genBtn = document.getElementById('btn-generate-bulk');
   const genResults = document.getElementById('gen-results');
