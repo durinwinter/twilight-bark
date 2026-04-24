@@ -32,6 +32,8 @@ enum Commands {
     List,
     /// Run the two-agent round-trip smoke test and exit
     SmokeTest,
+    /// Run a live A2A coordination scenario (Observer & Worker)
+    ScenarioA2a,
     /// Inject a manual task request into the fabric
     Inject {
         #[arg(short, long)]
@@ -59,7 +61,6 @@ async fn main() -> Result<()> {
 
             let controller = Arc::new(TrafficController::new());
             
-            // Wire in heartbeat monitoring
             let hb_bus = Arc::clone(&bus);
             let hb_controller = Arc::clone(&controller);
             tokio::spawn(async move {
@@ -69,11 +70,8 @@ async fn main() -> Result<()> {
                 }
             });
 
-            // Start cleanup loop
-            let cleanup_controller = Arc::clone(&controller);
-            tokio::spawn(cleanup_controller.run_cleanup_loop(5000, 30));
+            tokio::spawn(Arc::clone(&controller).run_cleanup_loop(5000, 30));
 
-            // Start automated heartbeat for THIS node
             let hb_task = Arc::clone(&bus).start_heartbeat_loop(identity.node_uuid.clone(), 10);
 
             tokio::signal::ctrl_c().await?;
@@ -112,6 +110,10 @@ async fn main() -> Result<()> {
                 eprintln!("[SMOKE TEST] FAIL: {e}");
                 std::process::exit(1);
             }
+        }
+
+        Commands::ScenarioA2a => {
+            run_scenario_a2a().await?;
         }
 
         Commands::Inject { operation, input, target_uuid } => {
@@ -153,7 +155,122 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn run_scenario_a2a() -> Result<()> {
+    println!("--- [SCENARIO: A2A Coordination] ---");
+    
+    let observer_bus = Arc::new(TwilightBus::new("default", "local").await?);
+    let worker_bus = Arc::new(TwilightBus::new("default", "local").await?);
+
+    let observer_id = create_default_identity("observer-agent", "scout");
+    let worker_id = create_default_identity("worker-agent", "processor");
+
+    println!("[OBSERVER] {} started.", observer_id.node_uuid);
+    println!("[WORKER]   {} started.", worker_id.node_uuid);
+
+    observer_bus.publish_presence(&create_presence(observer_id.clone(), AgentStatus::Online)).await?;
+    worker_bus.publish_presence(&create_presence(worker_id.clone(), AgentStatus::Online)).await?;
+
+    let _hb1 = Arc::clone(&observer_bus).start_heartbeat_loop(observer_id.node_uuid.clone(), 5);
+    let _hb2 = Arc::clone(&worker_bus).start_heartbeat_loop(worker_id.node_uuid.clone(), 5);
+
+    let mut worker_stream = worker_bus.subscribe_traffic().await?;
+    let mut observer_stream = observer_bus.subscribe_traffic().await?;
+
+    // Worker Logic: Listen for tasks and reply
+    let wb = Arc::clone(&worker_bus);
+    let w_id = worker_id.clone();
+    tokio::spawn(async move {
+        while let Some(envelope) = worker_stream.next().await {
+            if let Some(Payload::TaskRequest(req)) = envelope.payload {
+                println!("[WORKER] Received task: {} (operation: {})", req.task_id, req.operation);
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                
+                let result = TwilightEnvelope {
+                    message_uuid: Uuid::new_v4().to_string(),
+                    correlation_uuid: req.task_id.clone(),
+                    causation_uuid: envelope.message_uuid.clone(),
+                    source: Some(w_id.clone()),
+                    target: envelope.source.as_ref().map(|s| {
+                        let mut t = MessageTarget::default();
+                        t.set_target_kind(TargetKind::Unicast);
+                        t.target_agent_uuids.push(s.node_uuid.clone());
+                        t
+                    }),
+                    kind: MessageKind::TaskResult as i32,
+                    priority: 2,
+                    created_unix_ms: Utc::now().timestamp_millis(),
+                    expires_unix_ms: Utc::now().timestamp_millis() + 30000,
+                    tags: vec!["scenario-result".to_string()],
+                    payload: Some(Payload::TaskResult(TaskResult {
+                        task_id: req.task_id.clone(),
+                        output_json: r#"{"status": "success", "files_scanned": 42}"#.to_string(),
+                        success: true,
+                        error_message: String::new(),
+                    })),
+                };
+                let _ = wb.publish_envelope(&result).await;
+                println!("[WORKER] Task result sent.");
+            }
+        }
+    });
+
+    // Observer Logic: Wait for worker, then task it
+    println!("[OBSERVER] Waiting for Worker discovery...");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let task_id = Uuid::new_v4().to_string();
+    let mut target = MessageTarget::default();
+    target.set_target_kind(TargetKind::Unicast);
+    target.target_agent_uuids.push(worker_id.node_uuid.clone());
+
+    let request = TwilightEnvelope {
+        message_uuid: Uuid::new_v4().to_string(),
+        correlation_uuid: task_id.clone(),
+        causation_uuid: String::new(),
+        source: Some(observer_id.clone()),
+        target: Some(target),
+        kind: MessageKind::TaskRequest as i32,
+        priority: 2,
+        created_unix_ms: Utc::now().timestamp_millis(),
+        expires_unix_ms: Utc::now().timestamp_millis() + 30000,
+        tags: vec!["scenario-task".to_string()],
+        payload: Some(Payload::TaskRequest(TaskRequest {
+            task_id: task_id.clone(),
+            operation: "analyze_vault".to_string(),
+            input_json: r#"{"vault": "main"}"#.to_string(),
+            timeout_ms: 10000,
+        })),
+    };
+
+    println!("[OBSERVER] Sending 'analyze_vault' task to Worker...");
+    observer_bus.publish_envelope(&request).await?;
+
+    // Wait for result
+    println!("[OBSERVER] Waiting for result...");
+    let outcome = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(envelope) = observer_stream.next().await {
+            if let Some(Payload::TaskResult(res)) = envelope.payload {
+                if res.task_id == task_id {
+                    return Some(res.output_json);
+                }
+            }
+        }
+        None
+    }).await;
+
+    match outcome {
+        Ok(Some(json)) => println!("[OBSERVER] Task SUCCESS! Result: {}", json),
+        Ok(None) => println!("[OBSERVER] FAIL: Stream ended without result."),
+        Err(_) => println!("[OBSERVER] FAIL: Timed out waiting for result."),
+    }
+
+    println!("\nScenario complete. Press Ctrl+C to exit (keeping heartbeats active for Console monitoring).");
+    tokio::signal::ctrl_c().await?;
+    Ok(())
+}
+
 async fn run_smoke_test() -> Result<()> {
+    // ... (Existing smoke test remains unchanged)
     let sender_bus = Arc::new(TwilightBus::new("default", "local").await?);
     let receiver_bus = Arc::new(TwilightBus::new("default", "local").await?);
 
