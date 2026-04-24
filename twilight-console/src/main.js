@@ -37,19 +37,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   listen('bus-traffic', (event) => {
     const envelope = event.payload;
-    appendLog('TRAFFIC', envelope.source?.agent_name || 'unknown', JSON.stringify(envelope.payload));
+    appendLog(envelope.source?.site || 'unknown', 'TRAFFIC', envelope.source?.agent_name || 'unknown', JSON.stringify(envelope.payload));
   });
 
   listen('bus-heartbeat', (event) => {
     const hb = event.payload;
-    appendLog('HEARTBEAT', hb.node_id, `Status: ${hb.status}`);
+    appendLog('local', 'HEARTBEAT', hb.node_id, `Status: ${hb.status}`);
   });
 
-  function appendLog(kind, source, data) {
+  function appendLog(provider, kind, source, data) {
     const row = document.createElement('div');
     row.className = 'list-row';
     row.style.display = 'grid';
-    row.style.gridTemplateColumns = '120px 100px 180px 1fr';
+    row.style.gridTemplateColumns = '100px 120px 100px 180px 1fr';
     row.style.padding = '0.75rem 1.5rem';
     row.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
     row.style.fontSize = '0.85rem';
@@ -58,6 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     row.innerHTML = `
       <span style="color: #71717a">${time}</span>
+      <span style="color: #6366f1; font-weight: 600">${provider}</span>
       <span style="color: #8b5cf6; font-weight: 700">${kind}</span>
       <span style="color: #a1a1aa">${source}</span>
       <span style="color: #d4d4d8; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${data}</span>

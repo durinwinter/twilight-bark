@@ -196,7 +196,7 @@ body {
 
 .list-headers {
   display: grid;
-  grid-template-columns: 120px 100px 180px 1fr;
+  grid-template-columns: 100px 120px 100px 180px 1fr;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--glass-border);
   font-size: 0.8rem;

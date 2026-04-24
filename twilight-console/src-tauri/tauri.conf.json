@@ -21,13 +21,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+       "deb": {
+         "depends": ["libgtk-3-0", "libwebkit2gtk-4.0-37", "libayatana-appindicator3-1"]
+       }
+    }
   }
 }
