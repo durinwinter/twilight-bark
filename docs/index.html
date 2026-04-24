@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,11 +8,15 @@
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
 </head>
+
 <body>
-    <div class="background-glow"></div>
-    
+    <div class="mesh-gradient"></div>
+    <div class="noise-overlay"></div>
+
     <nav class="glass-nav">
         <div class="container">
             <div class="logo-area">
@@ -21,7 +26,7 @@
             <ul class="nav-links">
                 <li><a href="#features">Features</a></li>
                 <li><a href="#architecture">Architecture</a></li>
-                <li><a href="#observability">Observability</a></li>
+                <li><a href="#nuze">NuZe</a></li>
                 <li><a href="https://github.com/durinwinter/twilight-bark" class="btn-github">GitHub</a></li>
             </ul>
         </div>
@@ -29,9 +34,16 @@
 
     <header class="hero">
         <div class="container">
+            <div class="hero-branding">
+                <div class="logo-glow-container">
+                    <img src="logo.png" alt="Twilight Bark Logo" class="hero-logo">
+                    <div class="logo-glow"></div>
+                </div>
+            </div>
             <div class="hero-content">
                 <h1 class="glitch-text">Distributed Agent <span class="accent">Fabric</span></h1>
-                <p class="hero-subtitle">The high-performance communication backbone for the next generation of autonomous and collaborative AI agents.</p>
+                <p class="hero-subtitle">High-performance communication for the next generation of collaborative AI
+                    agents.</p>
                 <div class="hero-cta">
                     <a href="https://github.com/durinwinter/twilight-bark" class="btn-primary">Get Started</a>
                     <a href="#nuze" class="btn-secondary">Explore NuZe</a>
@@ -42,27 +54,34 @@
 
     <section id="features" class="features">
         <div class="container">
-            <h2 class="section-title">Core Capabilities</h2>
+            <div class="section-header">
+                <h2 class="section-title">Core Capabilities</h2>
+                <div class="section-underline"></div>
+            </div>
             <div class="feature-grid">
                 <div class="feature-card glass">
                     <div class="icon">🆔</div>
                     <h3>Unified Identity</h3>
-                    <p>Cryptographic UUIDs and role-based identities for every participant in the fabric.</p>
+                    <p>Cryptographic UUIDs and role-based identities for every participant in the distributed fabric.
+                    </p>
                 </div>
                 <div class="feature-card glass">
-                    <div class="icon">🚌</div>
+                    <div class="icon">🚀</div>
                     <h3>Zenoh 1.9 Bus</h3>
-                    <p>High-efficiency transport across edge, fog, and cloud with minimal latency.</p>
+                    <p>High-efficiency transport across edge, fog, and cloud with minimal latency and high throughput.
+                    </p>
                 </div>
                 <div class="feature-card glass">
                     <div class="icon">🚦</div>
                     <h3>Traffic Control</h3>
-                    <p>Decentralized registry and intelligent routing engine for complex agent topologies.</p>
+                    <p>Decentralized registry and intelligent routing engine for complex, multi-tenant agent topologies.
+                    </p>
                 </div>
                 <div class="feature-card glass">
-                    <div class="icon">🤖</div>
+                    <div class="icon">🧩</div>
                     <h3>MCP Native</h3>
-                    <p>Seamlessly integrate LLM agents via the Model Context Protocol tool suite.</p>
+                    <p>Seamlessly integrate LLM agents via the Model Context Protocol tool suite for instant utility.
+                    </p>
                 </div>
             </div>
         </div>
@@ -72,17 +91,23 @@
         <div class="container">
             <div class="nuze-grid">
                 <div class="nuze-text">
-                    <h2 class="section-title">Real-time Visualization</h2>
-                    <p>Twilight Bark includes a high-fidelity <strong>Signal Mirror</strong> designed for NuZe (Nushell). Visually inspect agent heartbeats, task requests, and observations in real-time.</p>
+                    <div class="section-header minimal">
+                        <h2 class="section-title">NuZe Visualization</h2>
+                        <div class="section-underline left"></div>
+                    </div>
+                    <p>Twilight Bark includes a high-fidelity <strong>Signal Mirror</strong> designed for NuZe
+                        (Nushell). Visually inspect agent heartbeats, task requests, and observations in real-time with
+                        structured data processing.</p>
                     <div class="code-block glass">
                         <span class="code-label">Execute in NuZe</span>
                         <code>sub "twilight/**/signal/**" | from json | table</code>
                     </div>
                 </div>
                 <div class="nuze-visual glass">
-                    <div class="visual-placeholder">
-                        <div class="pulse"></div>
-                        <div class="data-stream"></div>
+                    <div class="visual-container">
+                        <div class="radar-circle"></div>
+                        <div class="radar-line"></div>
+                        <div class="data-particles" id="particles"></div>
                     </div>
                 </div>
             </div>
@@ -91,10 +116,21 @@
 
     <footer>
         <div class="container">
-            <p>&copy; 2026 Twilight Bark Project. Built on Zenoh & Rust.</p>
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <img src="logo.png" alt="Twilight Bark" class="footer-logo">
+                    <span class="brand-name">Twilight Bark</span>
+                </div>
+                <p>&copy; 2026 Twilight Bark Project. Built on Zenoh & Rust.</p>
+                <div class="footer-links">
+                    <a href="https://github.com/durinwinter/twilight-bark">GitHub</a>
+                    <a href="ROADMAP.md">Roadmap</a>
+                </div>
+            </div>
         </div>
     </footer>
 
     <script src="app.js"></script>
 </body>
+
 </html>
