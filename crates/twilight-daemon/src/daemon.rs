@@ -99,14 +99,17 @@ impl TwilightDaemon {
                                     .unwrap_or_default();
 
                                 // Collect targets
+                                let all_subs: Vec<String> = ipc2.task_senders.iter()
+                                    .map(|e| e.key().clone())
+                                    .collect();
                                 let targets: Vec<String> = if let Some(ref tgt) = env.target {
                                     if tgt.target_kind() == TargetKind::Unicast {
                                         tgt.target_agent_uuids.clone()
                                     } else {
-                                        ipc2.task_senders.iter().map(|e| e.key().clone()).collect()
+                                        all_subs
                                     }
                                 } else {
-                                    ipc2.task_senders.iter().map(|e| e.key().clone()).collect()
+                                    all_subs
                                 };
 
                                 // Only route if any target is subscribed

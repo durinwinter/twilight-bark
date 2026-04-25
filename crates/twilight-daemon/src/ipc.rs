@@ -90,6 +90,7 @@ impl IpcServer {
 
     pub fn push_task_event(&self, agent_uuid: &str, event: serde_json::Value) {
         if let Some(tx) = self.task_senders.get(agent_uuid) {
+            let tx: &mpsc::Sender<serde_json::Value> = &*tx;
             let _ = tx.try_send(event);
         }
     }
@@ -261,7 +262,7 @@ impl IpcServer {
                 };
 
                 // Route result to the original requester's push channel
-                if let Some((_, req_uuid)) = self.pending_tasks.remove(&task_id) {
+                if let Some((_, req_uuid)) = self.pending_tasks.remove(task_id.as_str()) {
                     let event = json!({
                         "event": "task_result",
                         "task_id": &task_id,
