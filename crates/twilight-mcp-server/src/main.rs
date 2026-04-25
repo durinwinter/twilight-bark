@@ -64,6 +64,16 @@ struct AskAgentParams {
     input_json: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+struct ReplyTaskParams {
+    #[schemars(description = "Task ID from the incoming task_request event")]
+    task_id: String,
+    #[schemars(description = "JSON-encoded output payload for the reply")]
+    output_json: String,
+    #[schemars(description = "Whether the task succeeded")]
+    success: bool,
+}
+
 #[tool_router(server_handler)]
 impl FabricHandler {
     #[tool(description = "List all agents currently registered in the Twilight Bark fabric")]
@@ -92,6 +102,23 @@ impl FabricHandler {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         match self.client.ask_agent(&agent_uuid, &operation, &input_json).await {
             Ok(id) => Ok(CallToolResult::success(vec![Content::text(id)])),
+            Err(e) => Ok(CallToolResult::success(vec![Content::text(format!("error: {e}"))])),
+        }
+    }
+
+    #[tool(description = "Drain and return all pending incoming task events from the fabric (task_request and task_result). Returns a JSON array. Call this to check if any agents have sent you tasks or replies.")]
+    async fn get_pending_tasks(&self) -> String {
+        let tasks = self.client.get_pending_tasks().await;
+        serde_json::to_string(&tasks).unwrap_or_else(|_| "[]".to_string())
+    }
+
+    #[tool(description = "Reply to an incoming task request. Use the task_id from a task_request event returned by get_pending_tasks.")]
+    async fn reply_task(
+        &self,
+        Parameters(ReplyTaskParams { task_id, output_json, success }): Parameters<ReplyTaskParams>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        match self.client.reply_task(&task_id, &output_json, success).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("reply sent")])),
             Err(e) => Ok(CallToolResult::success(vec![Content::text(format!("error: {e}"))])),
         }
     }

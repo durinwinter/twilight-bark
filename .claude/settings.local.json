@@ -38,7 +38,16 @@
       "mcp__twilight-bark__get_registry",
       "mcp__twilight-bark__publish_task",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Read(//media/earthling/Caleb's Files2/Twilight-Bark/target/debug/**)",
+      "Bash(RUST_LOG=info \"/media/earthling/Caleb's Files3/Labrador-Subsystem/Twilight-Bark/target/debug/twilight-daemon\" --config ~/.config/twilight/daemon.toml)",
+      "Bash(echo \"Daemon PID: $!\")",
+      "Read(//run/user/1000/**)",
+      "Bash(/media/earthling/Caleb's Files3/Labrador-Subsystem/Twilight-Bark/target/debug/twilight-cli daemon *)",
+      "Bash(awk '{print $1, $2, $9, $10, $11}')",
+      "Bash(kill 99184)",
+      "Bash(awk '{print $2, $9, $10, $11}')",
+      "Bash(TWILIGHT_AGENT_NAME=lmstudio RUST_LOG=warn timeout 3 /home/earthling/.local/bin/twilight-mcp-lmstudio)"
     ]
   }
 }
