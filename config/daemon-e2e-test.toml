@@ -1,0 +1,27 @@
+# Twilight Bark — Local E2E test daemon config (no Ziti, hub/router mode)
+# Used by scripts/phase-test.sh. Safe to commit.
+
+[node]
+# Auto-generated as "{hostname}-{username}" when empty
+name = ""
+role = "hub"
+
+[identity]
+# Not used when ziti.enabled = false; must still be a valid path
+file = "/tmp/twilight-identity-test.json"
+
+[ziti]
+enabled = false
+controller_url = ""
+service = "twilight-zenoh-router"
+local_port = 7447
+
+[zenoh]
+tenant = "twilight-bark"
+# Router mode — listens on localhost only for tests
+listen = ["tcp/127.0.0.1:7448"]
+
+[daemon]
+# Empty = auto-detect via $XDG_RUNTIME_DIR / /tmp
+socket = ""
+log_level = "info"
