@@ -12,6 +12,13 @@ pub struct RegistryEntry {
 }
 
 #[derive(Serialize, Clone)]
+pub struct AgentSnapshot {
+    pub identity: AgentIdentity,
+    pub last_seen_ms: i64,
+    pub status: i32,
+}
+
+#[derive(Serialize, Clone)]
 pub struct AnalyticsEdge {
     pub source: String,
     pub target: String,
@@ -147,6 +154,14 @@ impl TrafficController {
 
     pub fn get_all_identities(&self) -> Vec<AgentIdentity> {
         self.registry.iter().map(|entry| entry.value().identity.clone()).collect()
+    }
+
+    pub fn get_registry_snapshot(&self) -> Vec<AgentSnapshot> {
+        self.registry.iter().map(|e| AgentSnapshot {
+            identity: e.value().identity.clone(),
+            last_seen_ms: e.value().last_seen.timestamp_millis(),
+            status: e.value().status,
+        }).collect()
     }
 
     pub fn get_identity(&self, uuid: &str) -> Option<AgentIdentity> {

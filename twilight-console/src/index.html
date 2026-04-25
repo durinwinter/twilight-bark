@@ -37,13 +37,16 @@
         <button class="nav-item" data-tab="flow">
           <span class="icon">📊</span> Analytics
         </button>
+        <button class="nav-item" data-tab="agents">
+          <span class="icon">🐾</span> Agents
+        </button>
         <button class="nav-item" data-tab="admin-suite">
           <span class="icon">👑</span> Management
         </button>
       </nav>
-      <div class="system-status">
-        <div class="status-dot online"></div>
-        <span>Bus Online</span>
+      <div class="system-status" id="daemon-status-bar">
+        <div class="status-dot" id="daemon-status-dot"></div>
+        <span id="daemon-status-label">Checking daemon...</span>
       </div>
     </aside>
 
@@ -140,6 +143,22 @@
           <div id="sankey-chart" class="chart-placeholder">
             [Sankey Visualization Engine Initializing]
           </div>
+        </div>
+      </section>
+
+      <!-- Agents Tab -->
+      <section id="tab-agents" class="tab-content">
+        <header class="tab-header">
+          <div style="display: flex; justify-content: space-between; align-items: start;">
+            <div>
+              <h1>Active Agents</h1>
+              <p>All agents registered in the fabric across all nodes.</p>
+            </div>
+            <button class="btn-primary" id="refresh-agents">Refresh</button>
+          </div>
+        </header>
+        <div id="agents-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem;">
+          <div class="card glass" style="color: var(--text-secondary); font-size: 0.85rem;">Waiting for agents...</div>
         </div>
       </section>
 

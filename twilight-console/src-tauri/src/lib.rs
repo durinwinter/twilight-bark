@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use twilight_bus::TwilightBus;
 use twilight_core::{auto_node_id, default_socket_path};
 use twilight_proto::twilight::{AgentPresence, Heartbeat, TwilightEnvelope};
-use twilight_traffic_controller::{AnalyticsSnapshot, TrafficController};
+use twilight_traffic_controller::{AgentSnapshot, AnalyticsSnapshot, TrafficController};
 
 pub struct AppState {
     pub bus: Mutex<Option<Arc<TwilightBus>>>,
@@ -181,23 +181,52 @@ async fn generate_identities(
     let enrollments_dir = format!("{home}/.config/twilight/enrollments");
     std::fs::create_dir_all(&enrollments_dir).map_err(|e| e.to_string())?;
 
-    let cli = find_twilight_binary("twilight-cli");
     let mut results = Vec::new();
-
     for i in 0..count {
         let node_id = format!("node-{:03}", i + 1);
         let jwt_path = format!("{enrollments_dir}/{node_id}.jwt");
-        let output = std::process::Command::new(&cli)
-            .args(["daemon", "enroll", "--dry-run", "--jwt", &jwt_path])
-            .output();
-        let status = match output {
-            Ok(o) if o.status.success() => "enrolled".to_string(),
-            Ok(o) => format!("error: {}", String::from_utf8_lossy(&o.stderr).trim()),
-            Err(e) => format!("spawn error: {e}"),
+        // Slot pre-created — admin runs provision-fabric.sh --add-node <node_id> to populate JWT.
+        let status = if std::path::Path::new(&jwt_path).exists() {
+            "jwt ready".to_string()
+        } else {
+            "awaiting jwt".to_string()
         };
         results.push((node_id, status));
     }
     Ok(results)
+}
+
+/// Returns daemon process status: running, pid, socket path.
+#[tauri::command]
+async fn get_daemon_status() -> Result<serde_json::Value, String> {
+    let pid_path = default_socket_path().with_extension("pid");
+    let socket_path = default_socket_path();
+
+    let pid: Option<u32> = std::fs::read_to_string(&pid_path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok());
+
+    let process_alive = pid.map(|p| {
+        std::process::Command::new("kill")
+            .args(["-0", &p.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }).unwrap_or(false);
+
+    let socket_ok = tokio::net::UnixStream::connect(&socket_path).await.is_ok();
+
+    Ok(serde_json::json!({
+        "running": process_alive && socket_ok,
+        "pid": pid,
+        "socket": socket_path.to_string_lossy().as_ref(),
+    }))
+}
+
+/// Returns a snapshot of all agents in the local registry (populated from bus presence events).
+#[tauri::command]
+async fn get_fabric_agents(state: State<'_, AppState>) -> Result<Vec<AgentSnapshot>, String> {
+    Ok(state.controller.get_registry_snapshot())
 }
 
 fn find_twilight_binary(name: &str) -> String {
@@ -249,6 +278,8 @@ pub fn run() {
             connect_bus,
             get_analytics,
             get_admin_data,
+            get_daemon_status,
+            get_fabric_agents,
             start_daemon,
             stop_daemon,
             enroll_identity,
