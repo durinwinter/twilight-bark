@@ -2,13 +2,13 @@ use anyhow::Result;
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use futures::StreamExt;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use twilight_bus::TwilightBus;
-use twilight_core::{create_default_identity, create_presence};
-use twilight_mcp_server::TwilightMcpServer;
+use twilight_core::{create_default_identity, create_presence, default_socket_path};
 use twilight_proto::twilight::{
-    twilight_envelope::Payload, AgentStatus, Heartbeat, MessageKind, MessageTarget, TargetKind,
+    twilight_envelope::Payload, AgentStatus, MessageKind, MessageTarget, TargetKind,
     TaskRequest, TaskResult, TwilightEnvelope,
 };
 use twilight_traffic_controller::TrafficController;
@@ -49,6 +49,43 @@ enum Commands {
         input: String,
         #[arg(short, long)]
         target_uuid: Option<String>,
+    },
+    /// Manage the Twilight Bark daemon
+    Daemon {
+        #[command(subcommand)]
+        command: DaemonCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DaemonCommands {
+    /// Enroll this node with the Ziti controller using an enrollment JWT
+    Enroll {
+        /// Path to the enrollment JWT file (provided by the hub admin)
+        #[arg(long)]
+        jwt: PathBuf,
+        /// Output path for the generated identity.json
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// Path or name of the ziti CLI binary
+        #[arg(long, default_value = "ziti")]
+        binary: String,
+    },
+    /// Start the daemon in the background
+    Start {
+        /// Path to daemon.toml config file
+        #[arg(long, env = "TWILIGHT_CONFIG")]
+        config: PathBuf,
+    },
+    /// Stop the running daemon
+    Stop {
+        #[arg(long)]
+        socket: Option<PathBuf>,
+    },
+    /// Show daemon process and socket status
+    Status {
+        #[arg(long)]
+        socket: Option<PathBuf>,
     },
 }
 
@@ -129,6 +166,10 @@ async fn main() -> Result<()> {
 
         Commands::McpServer { port } => {
             run_mcp_server(*port).await?;
+        }
+
+        Commands::Daemon { command } => {
+            run_daemon_command(command).await?;
         }
 
         Commands::Inject { operation, input, target_uuid } => {
@@ -396,27 +437,11 @@ async fn run_scenario_dogs() -> Result<()> {
     Ok(())
 }
 
-async fn run_mcp_server(port: u16) -> Result<()> {
-    println!("--- [Twilight-to-MCP Bridge Server] ---");
-    println!("[MCP] Initializing on port {}...", port);
-    
-    let bus = Arc::new(TwilightBus::new("default", "local").await?);
-    let identity = create_default_identity("mcp-bridge", "gateway");
-    
-    println!("[MCP] Gateway registered as: {}", identity.node_uuid);
-    bus.publish_presence(&create_presence(identity.clone(), AgentStatus::Online)).await?;
-    
-    // Heartbeat loop
-    let _hb = Arc::clone(&bus).start_heartbeat_loop(identity.node_uuid.clone(), 5);
-
-    println!("[MCP] Bridge active. Use standard MCP tools to interact with the fabric.");
-    println!("[MCP] Supported Tools: list_agents, dispatch_task, broadcast_signal");
-    
-    // Placeholder for actual JSON-RPC / HTTP server loop
-    // In a full implementation, we'd use 'axum' or 'actix-web' to serve the MCP spec.
-    println!("\nPRESS CTRL+C TO STOP THE BRIDGE.");
-    tokio::signal::ctrl_c().await?;
-    
+async fn run_mcp_server(_port: u16) -> Result<()> {
+    eprintln!("The mcp-server subcommand is deprecated.");
+    eprintln!("Use the standalone binary instead:");
+    eprintln!("  1. Start daemon:  twilight-cli daemon start --config ~/.config/twilight/daemon.toml");
+    eprintln!("  2. Start server:  twilight-mcp-server --name my-agent");
     Ok(())
 }
 
@@ -430,13 +455,28 @@ async fn run_smoke_test() -> Result<()> {
 
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    let controller = Arc::new(TrafficController::new());
-    let mcp = TwilightMcpServer::new(Arc::clone(&sender_bus), controller);
-
+    let smoke_identity = create_default_identity("smoke-test-sender", "cli");
+    let task_id = Uuid::new_v4().to_string();
     let mut target = MessageTarget::default();
     target.set_target_kind(TargetKind::Broadcast);
-
-    let task_id = mcp.publish_task("smoke-test", r#"{"ping":true}"#, target).await?;
+    sender_bus.publish_envelope(&TwilightEnvelope {
+        message_uuid: Uuid::new_v4().to_string(),
+        correlation_uuid: task_id.clone(),
+        causation_uuid: String::new(),
+        source: Some(smoke_identity),
+        target: Some(target),
+        kind: MessageKind::TaskRequest as i32,
+        priority: 2,
+        created_unix_ms: Utc::now().timestamp_millis(),
+        expires_unix_ms: Utc::now().timestamp_millis() + 30_000,
+        tags: Vec::new(),
+        payload: Some(Payload::TaskRequest(TaskRequest {
+            task_id: task_id.clone(),
+            operation: "smoke-test".to_string(),
+            input_json: r#"{"ping":true}"#.to_string(),
+            timeout_ms: 30_000,
+        })),
+    }).await?;
 
     let echo_id = task_id.clone();
     let rb = Arc::clone(&receiver_bus);
@@ -495,4 +535,92 @@ async fn run_smoke_test() -> Result<()> {
         Ok(false) => Err(anyhow::anyhow!("stream ended before TaskResult arrived")),
         Err(_) => Err(anyhow::anyhow!("timed out after 5s waiting for TaskResult")),
     }
+}
+
+async fn run_daemon_command(command: &DaemonCommands) -> Result<()> {
+    match command {
+        DaemonCommands::Enroll { jwt, out, binary } => {
+            let out_path = out.clone().unwrap_or_else(|| {
+                dirs_home().join(".config/twilight/identity.json")
+            });
+            println!("Enrolling identity from {:?} → {:?}", jwt, out_path);
+            twilight_ziti::enroll(binary, jwt, &out_path).await?;
+            println!("Enrollment complete. Run `twilight-cli daemon start` next.");
+        }
+
+        DaemonCommands::Start { config } => {
+            let binary = find_daemon_binary();
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::CommandExt;
+                let mut cmd = std::process::Command::new(&binary);
+                cmd.arg("--config").arg(config);
+                cmd.process_group(0); // detach from parent session
+                let child = cmd.spawn()
+                    .map_err(|e| anyhow::anyhow!("Failed to spawn {:?}: {e}", binary))?;
+                println!("Daemon spawned (pid={}, binary={:?})", child.id(), binary);
+                println!("PID file will be at: {:?}", default_socket_path().with_extension("pid"));
+            }
+            #[cfg(not(unix))]
+            anyhow::bail!("daemon start is only supported on Unix");
+        }
+
+        DaemonCommands::Stop { socket } => {
+            let pid_path = socket.as_ref()
+                .map(|s| s.with_extension("pid"))
+                .unwrap_or_else(|| default_socket_path().with_extension("pid"));
+            let pid_str = std::fs::read_to_string(&pid_path)
+                .map_err(|_| anyhow::anyhow!("No PID file at {:?}. Is the daemon running?", pid_path))?;
+            let pid = pid_str.trim().to_string();
+            std::process::Command::new("kill")
+                .args(["-TERM", &pid])
+                .status()?;
+            let _ = std::fs::remove_file(&pid_path);
+            println!("Sent SIGTERM to daemon (pid={pid})");
+        }
+
+        DaemonCommands::Status { socket } => {
+            let socket_path = socket.clone().unwrap_or_else(default_socket_path);
+            let pid_path = socket_path.with_extension("pid");
+
+            let process_status = if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
+                let pid = pid_str.trim().to_string();
+                let alive = std::process::Command::new("kill")
+                    .args(["-0", &pid])
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+                if alive { format!("running (pid={pid})") } else { "dead (stale PID file)".to_string() }
+            } else {
+                "not running (no PID file)".to_string()
+            };
+
+            let socket_status = tokio::net::UnixStream::connect(&socket_path).await
+                .map(|_| "reachable ✓")
+                .unwrap_or("not reachable ✗");
+
+            println!("Process:  {process_status}");
+            println!("Socket:   {:?}  {socket_status}", socket_path);
+        }
+    }
+    Ok(())
+}
+
+fn find_daemon_binary() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("twilight-daemon");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+    PathBuf::from("twilight-daemon")
+}
+
+fn dirs_home() -> PathBuf {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
 }

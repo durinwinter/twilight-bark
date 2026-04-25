@@ -21,9 +21,11 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
+futures = { workspace = true }
 
 # Twilight Bark Crates
 twilight-bus = { path = "../../crates/twilight-bus" }
 twilight-proto = { path = "../../crates/twilight-proto" }
 twilight-traffic-controller = { path = "../../crates/twilight-traffic-controller" }
 twilight-core = { path = "../../crates/twilight-core" }
+twilight-ziti = { path = "../../crates/twilight-ziti" }

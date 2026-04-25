@@ -1,57 +1,99 @@
-use twilight_proto::twilight::{TwilightEnvelope, TaskRequest, MessageTarget, TargetKind, MessageKind};
-use twilight_bus::TwilightBus;
-use twilight_traffic_controller::TrafficController;
-use std::sync::Arc;
 use anyhow::Result;
-use uuid::Uuid;
-use chrono::Utc;
+use serde_json::json;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixStream;
+use tokio::sync::Mutex;
 
-pub struct TwilightMcpServer {
-    bus: Arc<TwilightBus>,
-    controller: Arc<TrafficController>,
+/// IPC client that connects to a running twilight-daemon over a Unix socket.
+/// Each MCP shim instance holds one DaemonClient, which registers the agent on connect
+/// and publishes offline presence automatically when the connection is dropped.
+pub struct DaemonClient {
+    reader: Arc<Mutex<BufReader<tokio::net::unix::OwnedReadHalf>>>,
+    writer: Arc<Mutex<tokio::net::unix::OwnedWriteHalf>>,
+    pub agent_uuid: String,
 }
 
-impl TwilightMcpServer {
-    pub fn new(bus: Arc<TwilightBus>, controller: Arc<TrafficController>) -> Self {
-        Self { bus, controller }
+impl DaemonClient {
+    /// Connect to the daemon socket and register as the given agent name/role.
+    pub async fn connect(socket: &Path, name: &str, role: &str) -> Result<Self> {
+        let stream = UnixStream::connect(socket).await.map_err(|e| {
+            anyhow::anyhow!(
+                "Cannot connect to twilight-daemon at {:?}: {e}\n\
+                 Make sure the daemon is running: twilight-cli daemon start",
+                socket
+            )
+        })?;
+        let (r, w) = stream.into_split();
+        let reader = Arc::new(Mutex::new(BufReader::new(r)));
+        let writer = Arc::new(Mutex::new(w));
+
+        // Send registration command
+        {
+            let cmd = json!({"cmd": "register", "name": name, "role": role});
+            let mut line = serde_json::to_string(&cmd)?;
+            line.push('\n');
+            writer.lock().await.write_all(line.as_bytes()).await?;
+        }
+
+        // Read registration response
+        let mut resp_line = String::new();
+        reader.lock().await.read_line(&mut resp_line).await?;
+        let resp: serde_json::Value = serde_json::from_str(resp_line.trim())?;
+
+        let agent_uuid = resp["agent_uuid"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("daemon rejected registration: {:?}", resp))?
+            .to_string();
+
+        log::info!("Registered as '{name}' (uuid={agent_uuid})");
+        Ok(Self { reader, writer, agent_uuid })
     }
 
-    pub async fn publish_task(&self, operation: &str, input_json: &str, target: MessageTarget) -> Result<String> {
-        let task_id = Uuid::new_v4().to_string();
-        let envelope = TwilightEnvelope {
-            message_uuid: Uuid::new_v4().to_string(),
-            correlation_uuid: task_id.clone(),
-            causation_uuid: String::new(),
-            source: None, // Should be filled by the bus or caller
-            target: Some(target),
-            kind: MessageKind::TaskRequest as i32,
-            priority: 2, // Normal
-            created_unix_ms: Utc::now().timestamp_millis(),
-            expires_unix_ms: Utc::now().timestamp_millis() + 30000,
-            tags: Vec::new(),
-            payload: Some(twilight_proto::twilight::twilight_envelope::Payload::TaskRequest(TaskRequest {
-                task_id: task_id.clone(),
-                operation: operation.to_string(),
-                input_json: input_json.to_string(),
-                timeout_ms: 30000,
-            })),
-        };
-
-        self.bus.publish_envelope(&envelope).await?;
-        Ok(task_id)
+    pub async fn get_registry(&self) -> Result<serde_json::Value> {
+        let resp = self.call(json!({"cmd": "get_registry"})).await?;
+        Ok(resp["agents"].clone())
     }
 
-    pub async fn ask_agent(&self, target_uuid: &str, operation: &str, input_json: &str) -> Result<String> {
-        let mut target = MessageTarget::default();
-        target.target_kind = TargetKind::Unicast as i32;
-        target.target_agent_uuids.push(target_uuid.to_string());
-        
-        self.publish_task(operation, input_json, target).await
+    pub async fn publish_task(&self, operation: &str, input_json: &str) -> Result<String> {
+        let resp = self.call(json!({
+            "cmd": "publish_task",
+            "operation": operation,
+            "input_json": input_json,
+        })).await?;
+        extract_task_id(&resp)
     }
 
-    pub fn get_registry(&self) -> Vec<twilight_proto::twilight::AgentIdentity> {
-        // This is a bit simplified, usually we'd want to return a wrap or filtered view
-        self.controller.get_all_identities()
+    pub async fn ask_agent(&self, agent_uuid: &str, operation: &str, input_json: &str) -> Result<String> {
+        let resp = self.call(json!({
+            "cmd": "ask_agent",
+            "agent_uuid": agent_uuid,
+            "operation": operation,
+            "input_json": input_json,
+        })).await?;
+        extract_task_id(&resp)
+    }
+
+    async fn call(&self, cmd: serde_json::Value) -> Result<serde_json::Value> {
+        {
+            let mut w = self.writer.lock().await;
+            let mut line = serde_json::to_string(&cmd)?;
+            line.push('\n');
+            w.write_all(line.as_bytes()).await?;
+        }
+        let mut resp_line = String::new();
+        self.reader.lock().await.read_line(&mut resp_line).await?;
+        Ok(serde_json::from_str(resp_line.trim())?)
     }
 }
 
+fn extract_task_id(resp: &serde_json::Value) -> Result<String> {
+    if let Some(err) = resp["error"].as_str() {
+        anyhow::bail!("daemon error: {err}");
+    }
+    resp["task_id"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow::anyhow!("missing task_id in response: {:?}", resp))
+}

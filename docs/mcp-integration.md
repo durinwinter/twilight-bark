@@ -37,6 +37,13 @@ To make this work, the Twilight MCP Server exposes these standard tools:
 - `get_task_status(task_id)`: Polls for completion.
 - `broadcast_signal(signal_name, body)`: Sends a lightweight signal to all agents.
 
+## 6. Sub-Agent Tracking
+Twilight Bark treats every active entity as a first-class participant.
+
+- **Granular ID**: Sub-agents (like `Claude-Cowork`) should generate their own `node_uuid` or use a suffix (e.g., `primary-agent:coworker-1`).
+- **Activity Monitoring**: The **Monitor** tab in the Console tracks messages by `agent_name`. When a sub-agent speaks, its distinct name is recorded, allowing for deep audit logs of coordination chains.
+- **Traceability**: `correlation_uuid` and `causation_uuid` in the envelope ensure that even complex sub-agent interactions can be reconstructed into a single causal tree.
+
 ## 5. Security (Zero-Trust)
 Because the Bridge relies on the local **Twilight Console** or **Tunneler** for connectivity:
 - The LLM doesn't need Ziti credentials.

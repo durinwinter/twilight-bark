@@ -1,11 +1,12 @@
 use anyhow::Result;
-use twilight_bus::TwilightBus;
-use twilight_proto::twilight::{TwilightEnvelope, AgentPresence, Heartbeat};
-use twilight_traffic_controller::{TrafficController, AnalyticsSnapshot};
 use futures::StreamExt;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
+use twilight_bus::TwilightBus;
+use twilight_core::{auto_node_id, default_socket_path};
+use twilight_proto::twilight::{AgentPresence, Heartbeat, TwilightEnvelope};
+use twilight_traffic_controller::{AnalyticsSnapshot, TrafficController};
 
 pub struct AppState {
     pub bus: Mutex<Option<Arc<TwilightBus>>>,
@@ -15,54 +16,57 @@ pub struct AppState {
 #[tauri::command]
 async fn connect_bus(
     tenant: String,
-    site: String,
+    node_id: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    let bus = TwilightBus::new(&tenant, &site)
+    let bus = TwilightBus::new(&tenant, &node_id)
         .await
-        .map_err(|e| e.to_string())?;
-    
+        .map_err(|e| format!("Bus connection failed: {:?}", e))?;
+
     let bus_arc = Arc::new(bus);
     *state.bus.lock().await = Some(Arc::clone(&bus_arc));
 
     let controller = Arc::clone(&state.controller);
 
-    // Spawn listeners for various topics
+    // Traffic — node-local (console is an observer on the same node)
     let traffic_bus = Arc::clone(&bus_arc);
     let app_traffic = app.clone();
-    let traffic_controller = Arc::clone(&controller);
+    let traffic_ctrl = Arc::clone(&controller);
     tokio::spawn(async move {
         if let Ok(mut stream) = traffic_bus.subscribe_traffic().await {
-            while let Some(envelope) = stream.next().await {
-                // Record analytics
-                traffic_controller.record_traffic(&envelope);
-                // Emit for monitor tab
-                let _ = app_traffic.emit("bus-traffic", envelope);
+            while let Some(env) = stream.next().await {
+                let e: TwilightEnvelope = env;
+                traffic_ctrl.record_traffic(&e);
+                let _ = app_traffic.emit("bus-traffic", e);
             }
         }
     });
 
+    // Presence — cross-node wildcard so the console shows ALL agents in the fabric
     let presence_bus = Arc::clone(&bus_arc);
     let app_presence = app.clone();
-    let presence_controller = Arc::clone(&controller);
+    let presence_ctrl = Arc::clone(&controller);
     tokio::spawn(async move {
-        if let Ok(mut stream) = presence_bus.subscribe_presence().await {
-            while let Some(presence) = stream.next().await {
-                presence_controller.update_presence(presence.clone());
-                let _ = app_presence.emit("bus-presence", presence);
+        if let Ok(mut stream) = presence_bus.subscribe_all_presence().await {
+            while let Some(pres) = stream.next().await {
+                let p: AgentPresence = pres;
+                presence_ctrl.update_presence(p.clone());
+                let _ = app_presence.emit("bus-presence", p);
             }
         }
     });
 
+    // Heartbeats — cross-node wildcard
     let hb_bus = Arc::clone(&bus_arc);
     let app_hb = app.clone();
-    let hb_controller = Arc::clone(&controller);
+    let hb_ctrl = Arc::clone(&controller);
     tokio::spawn(async move {
-        if let Ok(mut stream) = hb_bus.subscribe_heartbeat().await {
+        if let Ok(mut stream) = hb_bus.subscribe_all_heartbeats().await {
             while let Some(hb) = stream.next().await {
-                hb_controller.update_heartbeat(hb.clone());
-                let _ = app_hb.emit("bus-heartbeat", hb);
+                let h: Heartbeat = hb;
+                hb_ctrl.update_heartbeat(h.clone());
+                let _ = app_hb.emit("bus-heartbeat", h);
             }
         }
     });
@@ -79,27 +83,157 @@ async fn get_analytics(state: State<'_, AppState>) -> Result<AnalyticsSnapshot, 
 async fn get_admin_data(state: State<'_, AppState>) -> Result<Vec<String>, String> {
     let bus_guard = state.bus.lock().await;
     let bus = bus_guard.as_ref().ok_or("Bus not connected")?;
-    
-    // Query zenoh admin space
+
     let mut keys = Vec::new();
-    if let Ok(mut replies) = bus.session.get("zenoh/admin/**").await {
-        while let Some(reply) = replies.next().await {
-            if let Ok(sample) = reply.sample {
-                keys.push(sample.key_expression.to_string());
+    if let Ok(replies) = bus.session.get("zenoh/admin/**").await {
+        while let Ok(reply) = replies.recv_async().await {
+            if let Ok(sample) = reply.result() {
+                keys.push(sample.key_expr().to_string());
             }
         }
     }
-    
     Ok(keys)
 }
 
+/// Returns the local node_id ("{hostname}-{username}") for use in connect_bus.
 #[tauri::command]
-async fn start_mcp_bridge(port: u16, state: State<'_, AppState>) -> Result<String, String> {
-    // In a real implementation, we'd spawn a background task with the MCP server
-    // For now, we'll simulate the successful start
-    println!("[TAURI] Starting MCP Bridge on port {}", port);
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    Ok(format!("Bridge started on port {}", port))
+fn get_node_id() -> String {
+    auto_node_id()
+}
+
+/// Start the twilight-daemon using the default config path.
+/// The daemon writes its own PID file — no need to track it here.
+#[tauri::command]
+async fn start_daemon(role: String, _state: State<'_, AppState>) -> Result<String, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let config = format!("{}/.config/twilight/daemon.toml", home);
+
+    if !std::path::Path::new(&config).exists() {
+        return Err(format!(
+            "No daemon config at {config}. Run 'twilight-cli daemon enroll' and create the config first."
+        ));
+    }
+
+    let binary = find_twilight_binary("twilight-daemon");
+    std::process::Command::new(&binary)
+        .arg("--config")
+        .arg(&config)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn {binary}: {e}"))?;
+
+    Ok(format!("Daemon starting ({role} mode) with config {config}"))
+}
+
+/// Stop the daemon by sending SIGTERM to the PID recorded in its PID file.
+#[tauri::command]
+async fn stop_daemon(_state: State<'_, AppState>) -> Result<String, String> {
+    let pid_path = default_socket_path().with_extension("pid");
+    let pid = std::fs::read_to_string(&pid_path)
+        .map_err(|_| format!("No PID file at {:?}. Is the daemon running?", pid_path))?;
+    let pid = pid.trim().to_string();
+
+    std::process::Command::new("kill")
+        .args(["-TERM", &pid])
+        .status()
+        .map_err(|e| format!("kill failed: {e}"))?;
+
+    let _ = std::fs::remove_file(&pid_path);
+    Ok(format!("Sent SIGTERM to daemon (pid={pid})"))
+}
+
+/// Enroll a Ziti identity from a JWT file.
+/// The path argument is the JWT file path. Output defaults to ~/.config/twilight/identity.json.
+#[tauri::command]
+async fn enroll_identity(path: String, _state: State<'_, AppState>) -> Result<String, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let out = std::path::PathBuf::from(format!("{}/.config/twilight/identity.json", home));
+    twilight_ziti::enroll("ziti", std::path::Path::new(&path), &out)
+        .await
+        .map(|_| format!("Identity enrolled → {:?}", out))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn provision_network(
+    name: String,
+    controller_url: String,
+    _state: State<'_, AppState>,
+) -> Result<String, String> {
+    // Shells out to the provision-fabric.sh script
+    let script = find_provision_script();
+    if script.is_empty() {
+        return Err("Cannot find scripts/provision-fabric.sh".to_string());
+    }
+    let output = std::process::Command::new("bash")
+        .args(["-c", &format!("ZITI_CTRL_URL={controller_url} {script} 2>&1")])
+        .output()
+        .map_err(|e| format!("Script failed: {e}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(format!("Provisioned network '{name}': {}", &stdout[..stdout.len().min(200)]))
+}
+
+#[tauri::command]
+async fn generate_identities(
+    count: u32,
+    _state: State<'_, AppState>,
+) -> Result<Vec<(String, String)>, String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let enrollments_dir = format!("{home}/.config/twilight/enrollments");
+    std::fs::create_dir_all(&enrollments_dir).map_err(|e| e.to_string())?;
+
+    let cli = find_twilight_binary("twilight-cli");
+    let mut results = Vec::new();
+
+    for i in 0..count {
+        let node_id = format!("node-{:03}", i + 1);
+        let jwt_path = format!("{enrollments_dir}/{node_id}.jwt");
+        let output = std::process::Command::new(&cli)
+            .args(["daemon", "enroll", "--dry-run", "--jwt", &jwt_path])
+            .output();
+        let status = match output {
+            Ok(o) if o.status.success() => "enrolled".to_string(),
+            Ok(o) => format!("error: {}", String::from_utf8_lossy(&o.stderr).trim()),
+            Err(e) => format!("spawn error: {e}"),
+        };
+        results.push((node_id, status));
+    }
+    Ok(results)
+}
+
+fn find_twilight_binary(name: &str) -> String {
+    // 1. ~/.cargo/bin (installed by install-service.sh)
+    if let Ok(home) = std::env::var("HOME") {
+        let p = format!("{home}/.cargo/bin/{name}");
+        if std::path::Path::new(&p).exists() {
+            return p;
+        }
+    }
+    // 2. Next to the current binary
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let p = dir.join(name);
+            if p.exists() {
+                return p.to_string_lossy().to_string();
+            }
+        }
+    }
+    // 3. PATH
+    name.to_string()
+}
+
+fn find_provision_script() -> String {
+    if let Ok(exe) = std::env::current_exe() {
+        // Walk up to find the repo root (looks for scripts/provision-fabric.sh)
+        let mut dir = exe.parent().and_then(|p| p.parent()).map(|p| p.to_path_buf());
+        while let Some(d) = dir {
+            let script = d.join("scripts/provision-fabric.sh");
+            if script.exists() {
+                return script.to_string_lossy().to_string();
+            }
+            dir = d.parent().map(|p| p.to_path_buf());
+        }
+    }
+    String::new()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -111,10 +245,15 @@ pub fn run() {
             controller: Arc::new(TrafficController::new()),
         })
         .invoke_handler(tauri::generate_handler![
-            connect_bus, 
-            get_analytics, 
+            get_node_id,
+            connect_bus,
+            get_analytics,
             get_admin_data,
-            start_mcp_bridge
+            start_daemon,
+            stop_daemon,
+            enroll_identity,
+            provision_network,
+            generate_identities,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

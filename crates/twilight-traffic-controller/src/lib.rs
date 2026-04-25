@@ -149,6 +149,14 @@ impl TrafficController {
         self.registry.iter().map(|entry| entry.value().identity.clone()).collect()
     }
 
+    pub fn get_identity(&self, uuid: &str) -> Option<AgentIdentity> {
+        self.registry.get(uuid).map(|e| e.identity.clone())
+    }
+
+    pub fn remove_agent(&self, uuid: &str) {
+        self.registry.remove(uuid);
+    }
+
     pub async fn run_cleanup_loop(self: Arc<Self>, interval_ms: u64, timeout_seconds: i64) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(interval_ms));
         loop {

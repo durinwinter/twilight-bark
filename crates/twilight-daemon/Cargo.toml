@@ -1,0 +1,25 @@
+[package]
+name = "twilight-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "twilight-daemon"
+
+[dependencies]
+twilight-bus = { path = "../twilight-bus" }
+twilight-core = { path = "../twilight-core" }
+twilight-proto = { path = "../twilight-proto" }
+twilight-traffic-controller = { path = "../twilight-traffic-controller" }
+twilight-ziti = { path = "../twilight-ziti" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+toml = "0.8"
+clap = { version = "4", features = ["derive", "env"] }

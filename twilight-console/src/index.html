@@ -6,6 +6,14 @@
   <link rel="stylesheet" href="styles.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tauri App</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "@tauri-apps/api/core": "/mock-tauri.js",
+        "@tauri-apps/api/event": "/mock-tauri.js"
+      }
+    }
+  </script>
   <script type="module" src="/main.js" defer></script>
 </head>
 
@@ -16,12 +24,12 @@
         <img src="/assets/logo.png" alt="Twilight Bark" class="logo" />
         <span class="brand-text">Twilight Bark</span>
       </div>
-      <nav class="sidebar-nav">
+      <nav class="nav-sidebar">
         <button class="nav-item active" data-tab="ziti">
-          <span class="icon">🛡️</span> OpenZiti
+          <span class="icon">🛡️</span> Security
         </button>
         <button class="nav-item" data-tab="zenoh">
-          <span class="icon">⚡</span> Zenoh Admin
+          <span class="icon">📡</span> Bark Bus
         </button>
         <button class="nav-item" data-tab="bark">
           <span class="icon">📢</span> Live Bus
@@ -40,10 +48,10 @@
     </aside>
 
     <main class="content">
-      <!-- Ziti Tab -->
+      <!-- Security & Networking Tab -->
       <section id="tab-ziti" class="tab-content active">
         <header class="tab-header">
-          <h1>OpenZiti Tunneler</h1>
+          <h1>Security & Networking</h1>
           <p>Manage zero-trust identities and secure overlays.</p>
         </header>
         <div class="config-grid">
@@ -67,26 +75,30 @@
             </div>
           </div>
           <div class="card glass" style="grid-column: span 2;">
-            <h3>Twilight MCP Bridge</h3>
-            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Expose this node to your
-              LLM clients (Claude, Gemini, LM Studio).</p>
+            <h3>Twilight Daemon Control</h3>
+            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Manage the local
+              twilight-daemon process that connects this node to the fabric.</p>
             <div style="display: flex; gap: 1rem; align-items: center;">
               <div style="flex: 1;">
-                <label style="font-size: 0.7rem; color: var(--text-secondary);">BRIDGE PORT</label>
-                <input type="number" id="mcp-port" value="7447" class="id-badge" style="width: 100%;">
+                <label style="font-size: 0.7rem; color: var(--text-secondary);">NODE ROLE</label>
+                <select id="daemon-role" class="id-badge"
+                  style="width: 100%; border: none; outline: none; background: rgba(0,0,0,0.2);">
+                  <option value="client">Client Node</option>
+                  <option value="hub">Hub Node</option>
+                </select>
               </div>
-              <button class="btn-primary" id="btn-toggle-bridge" style="height: 48px; flex: 2;">Launch Bridge</button>
+              <button class="btn-primary" id="btn-toggle-daemon" style="height: 48px; flex: 2;">Start Daemon</button>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Zenoh Tab -->
+      <!-- Bark Bus Tab -->
       <section id="tab-zenoh" class="tab-content">
         <header class="tab-header">
           <div style="display: flex; justify-content: space-between; align-items: start;">
             <div>
-              <h1>Zenoh Admin Space</h1>
+              <h1>Bark Bus Admin</h1>
               <p>Real-time inspection of the operational space.</p>
             </div>
             <button class="btn-primary" id="refresh-admin">Refresh</button>
@@ -141,18 +153,18 @@
           <div class="card glass">
             <h3>Create Network</h3>
             <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <input type="text" placeholder="Network Name (e.g. bark-labs)" class="id-badge">
-              <input type="text" placeholder="Controller URL" class="id-badge">
-              <button class="btn-primary">Provision Network</button>
+              <input type="text" id="network-name" placeholder="Network Name (e.g. bark-labs)" class="id-badge">
+              <input type="text" id="controller-url" placeholder="Controller URL" class="id-badge">
+              <button id="btn-provision" class="btn-primary">Provision Network</button>
             </div>
           </div>
           <div class="card glass">
-            <h3>Identity Factory</h3>
-            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Bulk generate dog-themed
-              enrollment tokens for your team.</p>
+            <h3>Participant Factory</h3>
+            <p style="font-size: 0.8rem; margin-bottom: 1rem; color: var(--text-secondary);">Bulk generate participant
+              identities and enrollment tokens for your team.</p>
             <div style="display: flex; gap: 0.5rem;">
               <input type="number" id="gen-count" value="15" class="id-badge" style="width: 80px;">
-              <button class="btn-primary" id="btn-generate-bulk" style="flex: 1;">Generate Pack</button>
+              <button class="btn-primary" id="btn-generate-bulk" style="flex: 1;">Generate Identities</button>
             </div>
             <div id="gen-results" style="margin-top: 1rem; max-height: 200px; overflow-y: auto; font-size: 0.8rem;">
             </div>

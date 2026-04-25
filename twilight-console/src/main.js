@@ -26,7 +26,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Connect to the Bus
   try {
     console.log("Connecting to Twilight Bus...");
-    await invoke("connect_bus", { tenant: "default", site: "local" });
+    const nodeId = await invoke("get_node_id");
+    await invoke("connect_bus", { tenant: "twilight-bark", nodeId });
     console.log("Connected.");
   } catch (e) {
     console.error("Failed to connect to bus:", e);
@@ -37,7 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   listen('bus-traffic', (event) => {
     const envelope = event.payload;
-    appendLog(envelope.source?.site || 'unknown', 'TRAFFIC', envelope.source?.agent_name || 'unknown', JSON.stringify(envelope.payload));
+    appendLog(envelope.source?.node_id || envelope.source?.site || 'unknown', 'TRAFFIC', envelope.source?.agent_name || 'unknown', JSON.stringify(envelope.payload));
   });
 
   listen('bus-heartbeat', (event) => {
@@ -149,13 +150,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     enrollBtn.disabled = true;
 
     try {
-      // In a real app, we'd use tauri-plugin-dialog to pick the file
-      // and then call a Rust command to perform enrollment.
-      setTimeout(() => {
-        enrollBtn.innerText = "Enrolled!";
-        enrollBtn.style.background = "#10b981";
-        console.log(`Identity enrolled from ${path}`);
-      }, 2000);
+      const result = await invoke("enroll_identity", { path });
+      enrollBtn.innerText = "Enrolled!";
+      enrollBtn.style.background = "#10b981";
+      console.log(`Identity enrolled from ${path}: ${result}`);
     } catch (e) {
       alert(`Enrollment failed: ${e}`);
       enrollBtn.disabled = false;
@@ -163,47 +161,57 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // MCP Bridge Logic
-  const bridgeBtn = document.getElementById('btn-toggle-bridge');
-  const mcpPort = document.getElementById('mcp-port');
-  let bridgeRunning = false;
+  // Daemon Control Logic
+  const daemonBtn = document.getElementById('btn-toggle-daemon');
+  const daemonRole = document.getElementById('daemon-role');
+  let daemonRunning = false;
 
-  bridgeBtn.addEventListener('click', async () => {
-    if (!bridgeRunning) {
-      bridgeBtn.innerText = "Launching...";
-      bridgeBtn.disabled = true;
-      try {
-        await invoke("start_mcp_bridge", { port: parseInt(mcpPort.value) });
-        bridgeRunning = true;
-        bridgeBtn.innerText = "Stop Bridge";
-        bridgeBtn.style.background = "#ef4444";
-        bridgeBtn.disabled = false;
-      } catch (e) {
-        alert(`Failed to start bridge: ${e}`);
-        bridgeBtn.innerText = "Launch Bridge";
-        bridgeBtn.disabled = false;
+  if (daemonBtn) {
+    daemonBtn.addEventListener('click', async () => {
+      if (!daemonRunning) {
+        daemonBtn.innerText = "Starting...";
+        daemonBtn.disabled = true;
+        try {
+          await invoke("start_daemon", { role: daemonRole.value });
+          daemonRunning = true;
+          daemonBtn.innerText = "Stop Daemon";
+          daemonBtn.style.background = "#ef4444";
+          daemonBtn.disabled = false;
+        } catch (e) {
+          alert(`Failed to start daemon: ${e}`);
+          daemonBtn.innerText = "Start Daemon";
+          daemonBtn.disabled = false;
+        }
+      } else {
+        daemonBtn.innerText = "Stopping...";
+        daemonBtn.disabled = true;
+        try {
+          await invoke("stop_daemon");
+          daemonRunning = false;
+          daemonBtn.innerText = "Start Daemon";
+          daemonBtn.style.background = "var(--primary-gradient)";
+          daemonBtn.disabled = false;
+        } catch (e) {
+          alert(`Failed to stop daemon: ${e}`);
+          daemonBtn.innerText = "Stop Daemon";
+          daemonBtn.disabled = false;
+        }
       }
-    } else {
-      bridgeRunning = false;
-      bridgeBtn.innerText = "Launch Bridge";
-      bridgeBtn.style.background = "var(--primary-gradient)";
-    }
-  });
+    });
+  }
 
   // Bulk Generator Logic
   const genBtn = document.getElementById('btn-generate-bulk');
   const genResults = document.getElementById('gen-results');
-  const dogBreeds = ['Beagle', 'Husky', 'Boxer', 'Terrier', 'Collie', 'Retriever', 'Spaniel', 'Dachshund', 'Poodle', 'Mastiff', 'Greyhound', 'Shiba', 'Corgi', 'Bulldog', 'Maltese'];
 
-  genBtn.addEventListener('click', () => {
+  genBtn.addEventListener('click', async () => {
     const count = parseInt(document.getElementById('gen-count').value) || 15;
-    genResults.innerHTML = '<div class="placeholder">Breeding pack...</div>';
+    genResults.innerHTML = '<div class="placeholder">Provisioning nodes...</div>';
 
-    setTimeout(() => {
+    try {
+      const identities = await invoke("generate_identities", { count });
       genResults.innerHTML = '';
-      for (let i = 0; i < count; i++) {
-        const breed = dogBreeds[i % dogBreeds.length];
-        const id = Math.random().toString(36).substring(2, 10).toUpperCase();
+      identities.forEach(identity => {
         const row = document.createElement('div');
         row.className = 'glass';
         row.style.padding = '0.5rem';
@@ -211,12 +219,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         row.style.display = 'flex';
         row.style.justifyContent = 'space-between';
         row.innerHTML = `
-          <span>🐶 <strong>${breed}-${i + 1}</strong></span>
-          <span style="color: #10b981; font-family: monospace;">TOKEN-${id}</span>
+          <span>🧑‍💻 <strong>${identity[0]}</strong></span>
+          <span style="color: #10b981; font-family: monospace;">${identity[1]}</span>
         `;
         genResults.appendChild(row);
-      }
-      console.log(`Generated ${count} dog identities.`);
-    }, 1500);
+      });
+      console.log(`Generated ${count} participant identities.`);
+    } catch (e) {
+      genResults.innerHTML = `<div class="placeholder" style="color: #ef4444">Failed: ${e}</div>`;
+    }
   });
+
+  // Provision Network Logic
+  const provisionBtn = document.getElementById('btn-provision');
+  const networkName = document.getElementById('network-name');
+  const controllerUrl = document.getElementById('controller-url');
+
+  if (provisionBtn) {
+    provisionBtn.addEventListener('click', async () => {
+      const name = networkName.value;
+      const url = controllerUrl.value;
+
+      if (!name || !url) {
+        alert("Please provide both Network Name and Controller URL");
+        return;
+      }
+
+      provisionBtn.innerText = "Provisioning...";
+      provisionBtn.disabled = true;
+
+      try {
+        const result = await invoke("provision_network", { name, controllerUrl: url });
+        provisionBtn.innerText = "Provisioned!";
+        provisionBtn.style.background = "#10b981";
+        console.log(`Network provisioned: ${result}`);
+      } catch (e) {
+        alert(`Provisioning failed: ${e}`);
+        provisionBtn.innerText = "Provision Network";
+        provisionBtn.disabled = false;
+      }
+    });
+  }
 });

@@ -2,6 +2,16 @@
 
 This document outlines how a team of agents and operators can join a shared, secure communication fabric using **OpenZiti** and **Twilight Bark**.
 
+## 0. Infrastructure Provisioning (Admin Only)
+Before users can join, the routing backbone must be established.
+
+1.  **Provision Node**: On a server with a public IP (or within your VPC), run:
+    ```bash
+    ./scripts/setup-ziti-infra.sh
+    ```
+2.  **Verify**: Ensure the controller is reachable. The script generates `config/twilight-net.yaml`.
+3.  **Distribute**: Send the `twilight-net.yaml` to your 15 users.
+
 ## 1. The Network ID (`twilight-net.yaml`)
 To connect to a specific fabric, every node needs the **Network ID**. This is a small YAML file distributed by the fabric administrator.
 

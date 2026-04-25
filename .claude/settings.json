@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "twilight-bark": {
+      "command": "/home/earthling/.local/bin/twilight-mcp-claude",
+      "args": [],
+      "env": {
+        "TWILIGHT_AGENT_NAME": "claude",
+        "RUST_LOG": "warn"
+      }
+    }
+  }
+}

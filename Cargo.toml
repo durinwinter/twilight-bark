@@ -4,16 +4,19 @@ members = [
     "crates/twilight-proto",
     "crates/twilight-core",
     "crates/twilight-bus",
+    "crates/twilight-daemon",
     "crates/twilight-mcp-server",
     "crates/twilight-traffic-controller",
     "crates/twilight-eventlog",
     "crates/twilight-cli",
     "adapters/filesystem",
-    "adapters/obsidian", "crates/twilight-ziti",
+    "adapters/obsidian",
+    "crates/twilight-ziti",
+    "twilight-console/src-tauri",
 ]
 
 [workspace.dependencies]
-zenoh = "1.1.0-alpha.1"
+zenoh = "1.9.0"
 prost = "0.13"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
@@ -23,6 +26,8 @@ chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1"
 async-trait = "0.1"
 futures = "0.3"
-rmcp = { version = "1.5", features = ["transport-io"] }
+rmcp = { version = "1.5", features = ["transport-io", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio-util = "0.7"
 log = "0.4"
 env_logger = "0.11"

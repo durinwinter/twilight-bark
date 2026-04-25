@@ -41,6 +41,7 @@ message AgentIdentity {
   string agent_version = 60;
   string runtime = 61;
   string host = 62;
+  string node_id = 63;  // "{hostname}-{username}" — fabric-wide unique node identifier
 }
 
 enum NodeKind {

@@ -4,9 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-twilight-proto = { path = "../twilight-proto" }
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 log = { workspace = true }
-# ziti-sdk = "0.x" # Place holder for actual SDK integration
+tokio = { workspace = true }
