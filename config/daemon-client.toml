@@ -1,0 +1,30 @@
+# Twilight Bark Daemon — Client Node Config
+# Copy to ~/.config/twilight/daemon.toml on any non-hub node.
+# Replace all placeholder values.
+
+[node]
+# Auto-generated if left empty: "{hostname}-{username}"
+name = ""
+role = "client"
+
+[identity]
+file = "~/.config/twilight/identity.json"
+
+[ziti]
+enabled = true
+controller_url = "https://pop-os:6262"
+# Ziti service name — must match what was created by provision-fabric.sh
+service = "twilight-zenoh-router"
+# Local TCP port that ziti-tunnel proxy will bind. Zenoh connects here.
+local_port = 7447
+binary = "ziti"
+
+[zenoh]
+tenant = "twilight-bark"
+# Points at the local ziti-tunnel proxy port — do not change this unless local_port changed.
+peers = ["tcp/127.0.0.1:7447"]
+
+[daemon]
+# Leave empty to use XDG_RUNTIME_DIR/twilight-daemon.sock (auto-detected)
+socket = ""
+log_level = "info"

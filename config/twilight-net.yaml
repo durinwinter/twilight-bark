@@ -1,0 +1,5 @@
+network_name: "twilight-fabric"
+controller_url: "https://pop-os:6262"
+tenant_id: "default-tenant"
+admin_user: "admin"
+provisioned_at: "Fri Apr 24 05:03:18 PM MDT 2026"

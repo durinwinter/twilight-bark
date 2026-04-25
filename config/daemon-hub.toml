@@ -1,0 +1,28 @@
+# Twilight Bark Daemon — Hub Node Config
+# Copy to ~/.config/twilight/daemon.toml and edit node.name.
+
+[node]
+# Auto-generated if left empty: "{hostname}-{username}"
+name = "hub-pop-os-caleb"
+role = "hub"
+
+[identity]
+file = "/home/caleb/.config/twilight/identity.json"
+
+[ziti]
+# Hub binds the service; it does not need to dial the tunnel.
+# Set enabled = true if this hub also needs to reach other Ziti services.
+enabled = false
+controller_url = "https://pop-os:6262"
+service = "twilight-zenoh-router"
+local_port = 7447
+binary = "ziti"
+
+[zenoh]
+tenant = "twilight-bark"
+# Hub listens for router connections. Leave listen empty to use the default tcp/0.0.0.0:7447.
+listen = ["tcp/0.0.0.0:7447"]
+
+[daemon]
+socket = "/run/user/1000/twilight-daemon.sock"
+log_level = "info"

@@ -50,6 +50,8 @@ This roadmap outlines the evolution of Twilight Bark from its MVP state to a pro
 - [ ] **Python/JS Bridges**: Client libraries for non-Rust agent implementations.
 - [ ] **Cloud Connectors**: Built-in adapters for AWS S3, Google Drive, and Notion.
 - [ ] **Task Orchestrator**: High-level state machine for complex, multi-agent workflows.
+- [ ] **AgentShield & Hook Architecture**: Decentralized tool security, `PreToolUse` and `PostToolUse` interception on the fabric, and red/blue vulnerability scanning of MCP definitions.
+- [ ] **Standardized Agent Topologies**: Cross-LLM role standardization using explicitly shaped personas (e.g., planner, loop-operator) for predictable inter-agent coordination.
 - [ ] **End-to-End Encryption**: Optional payload encryption for sensitive task data.
 - [ ] **Capabilities Negotiation**: Fine-grained tool discovery based on agent permissions.
 - [ ] **Priority Queuing**: Quality of Service (QoS) levels for mission-critical tasks.

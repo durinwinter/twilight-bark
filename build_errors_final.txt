@@ -1,0 +1,11 @@
+    Checking twilight-console v0.1.0 (/media/earthling/Caleb's Files2/Twilight-Bark/twilight-console/src-tauri)
+warning: unused import: `Manager`
+ --> twilight-console/src-tauri/src/lib.rs:7:33
+  |
+7 | use tauri::{AppHandle, Emitter, Manager, State};
+  |                                 ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `twilight-console` (lib) generated 1 warning
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.11s
