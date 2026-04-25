@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use twilight_bus::TwilightBus;
 use twilight_core::{create_node_identity, create_presence};
-use twilight_proto::twilight::AgentStatus;
+use twilight_proto::twilight::{twilight_envelope::Payload, AgentStatus, TargetKind};
 use twilight_traffic_controller::TrafficController;
 use twilight_ziti::ZitiTunnel;
 use log::info;
@@ -72,6 +72,9 @@ impl TwilightDaemon {
         }
         tokio::spawn(Arc::clone(&controller).run_cleanup_loop(5_000, 30));
 
+        // 3b. Traffic subscription — route incoming TaskRequests to subscribed IPC clients
+        // (wired after IPC server is created below so it shares the task_senders map)
+
         // 4. IPC server
         let ipc = Arc::new(IpcServer::new(
             socket_path.clone(),
@@ -81,6 +84,56 @@ impl TwilightDaemon {
             tenant.clone(),
         ));
         tokio::spawn(Arc::clone(&ipc).run());
+
+        // 4b. Route incoming traffic to subscribed IPC task listeners
+        {
+            let bus2 = Arc::clone(&bus);
+            let ipc2 = Arc::clone(&ipc);
+            tokio::spawn(async move {
+                match bus2.subscribe_traffic().await {
+                    Ok(mut s) => {
+                        while let Some(env) = s.next().await {
+                            if let Some(Payload::TaskRequest(ref req)) = env.payload {
+                                let source_uuid = env.source.as_ref()
+                                    .map(|id| id.node_uuid.clone())
+                                    .unwrap_or_default();
+
+                                // Collect targets
+                                let targets: Vec<String> = if let Some(ref tgt) = env.target {
+                                    if tgt.target_kind() == TargetKind::Unicast {
+                                        tgt.target_agent_uuids.clone()
+                                    } else {
+                                        ipc2.task_senders.iter().map(|e| e.key().clone()).collect()
+                                    }
+                                } else {
+                                    ipc2.task_senders.iter().map(|e| e.key().clone()).collect()
+                                };
+
+                                // Only route if any target is subscribed
+                                if targets.iter().any(|u| ipc2.task_senders.contains_key(u)) {
+                                    // Record task_id → sender for reply routing
+                                    ipc2.pending_tasks.insert(req.task_id.clone(), source_uuid.clone());
+
+                                    let event = serde_json::json!({
+                                        "event": "task_request",
+                                        "task_id": &req.task_id,
+                                        "operation": &req.operation,
+                                        "input_json": &req.input_json,
+                                        "source_uuid": &source_uuid,
+                                        "message_uuid": &env.message_uuid,
+                                    });
+
+                                    for uuid in &targets {
+                                        ipc2.push_task_event(uuid, event.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => log::error!("Traffic subscription failed: {e}"),
+                }
+            });
+        }
 
         // 5. Own presence + heartbeat
         let identity = create_node_identity("twilight-daemon", "daemon", &node_id, &tenant);

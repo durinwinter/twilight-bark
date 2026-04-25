@@ -15,5 +15,6 @@ futures = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
+serde_json = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }

@@ -5,6 +5,8 @@ use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::net::UnixStream;
 use twilight_bus::TwilightBus;
 use twilight_core::{create_default_identity, create_presence, default_socket_path};
 use twilight_proto::twilight::{
@@ -54,6 +56,44 @@ enum Commands {
     Daemon {
         #[command(subcommand)]
         command: DaemonCommands,
+    },
+    /// Run a standalone agent connected to the daemon — for scripted E2E testing
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommands,
+        /// Daemon socket path (defaults to $XDG_RUNTIME_DIR or /tmp)
+        #[arg(long, env = "TWILIGHT_DAEMON_SOCKET", global = true)]
+        socket: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AgentCommands {
+    /// Listen for incoming tasks. Prints each one; optionally auto-replies.
+    Listen {
+        /// Agent name shown in the registry
+        #[arg(long, default_value = "test-listener")]
+        name: String,
+        #[arg(long, default_value = "worker")]
+        role: String,
+        /// Immediately send a canned success reply to every received task
+        #[arg(long)]
+        auto_reply: bool,
+    },
+    /// Register as a sender, send one task, wait for the reply, then exit.
+    Send {
+        /// Agent name shown in the registry
+        #[arg(long, default_value = "test-sender")]
+        name: String,
+        /// MCP operation name (e.g. "analyze", "bark_echo")
+        #[arg(long)]
+        operation: String,
+        /// JSON input payload
+        #[arg(long, default_value = "{}")]
+        input: String,
+        /// Target by agent name (registry lookup). Omit for broadcast.
+        #[arg(long)]
+        target: Option<String>,
     },
 }
 
@@ -206,6 +246,176 @@ async fn main() -> Result<()> {
             bus.publish_envelope(&envelope).await?;
             println!("Task injected successfully.");
         }
+
+        Commands::Agent { command, socket } => {
+            let socket_path = socket.clone().unwrap_or_else(default_socket_path);
+            match command {
+                AgentCommands::Listen { name, role, auto_reply } => {
+                    run_agent_listen(name, role, *auto_reply, &socket_path).await?;
+                }
+                AgentCommands::Send { name, operation, input, target } => {
+                    run_agent_send(name, operation, input, target.as_deref(), &socket_path).await?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ── Agent listen/send — IPC-based E2E test helpers ────────────────────────────
+
+async fn ipc_write(w: &mut tokio::net::unix::OwnedWriteHalf, v: serde_json::Value) -> Result<()> {
+    let mut s = serde_json::to_string(&v)?;
+    s.push('\n');
+    w.write_all(s.as_bytes()).await?;
+    Ok(())
+}
+
+async fn ipc_read(lines: &mut tokio::io::Lines<tokio::io::BufReader<tokio::net::unix::OwnedReadHalf>>) -> Result<serde_json::Value> {
+    match lines.next_line().await? {
+        Some(line) => Ok(serde_json::from_str(&line)?),
+        None => anyhow::bail!("daemon closed connection"),
+    }
+}
+
+async fn ipc_connect_and_register(socket: &std::path::Path, name: &str, role: &str)
+    -> Result<(tokio::net::unix::OwnedWriteHalf, tokio::io::Lines<tokio::io::BufReader<tokio::net::unix::OwnedReadHalf>>, String)>
+{
+    let stream = UnixStream::connect(socket).await
+        .map_err(|e| anyhow::anyhow!("Cannot connect to daemon at {:?}: {e}\n  → Start it with: twilight-cli daemon start --config ~/.config/twilight/daemon.toml", socket))?;
+    let (r, mut w) = stream.into_split();
+    let mut lines = tokio::io::BufReader::new(r).lines();
+    ipc_write(&mut w, serde_json::json!({"cmd":"register","name":name,"role":role})).await?;
+    let reg = ipc_read(&mut lines).await?;
+    let uuid = reg["agent_uuid"].as_str().unwrap_or("?").to_string();
+    Ok((w, lines, uuid))
+}
+
+async fn run_agent_listen(name: &str, role: &str, auto_reply: bool, socket: &std::path::Path) -> Result<()> {
+    let (mut w, mut lines, uuid) = ipc_connect_and_register(socket, name, role).await?;
+
+    println!("[{name}] Registered  uuid={}", &uuid[..8.min(uuid.len())]);
+    println!("[{name}] Subscribing to tasks...");
+
+    ipc_write(&mut w, serde_json::json!({"cmd":"subscribe_tasks"})).await?;
+    let ack = ipc_read(&mut lines).await?;
+    if !ack["ok"].as_bool().unwrap_or(false) {
+        anyhow::bail!("subscribe_tasks failed: {ack}");
+    }
+
+    println!("[{name}] Listening — press Ctrl-C to stop\n");
+
+    while let Ok(Some(line)) = lines.next_line().await {
+        let event: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+        let ts = chrono::Utc::now().format("%H:%M:%S%.3f");
+
+        match event["event"].as_str() {
+            Some("task_request") => {
+                let task_id  = event["task_id"].as_str().unwrap_or("?");
+                let op       = event["operation"].as_str().unwrap_or("?");
+                let input    = event["input_json"].as_str().unwrap_or("{}");
+                let src      = event["source_uuid"].as_str().unwrap_or("?");
+
+                println!("[{name}] [{ts}] RECEIVED task");
+                println!("  task_id  : {}", task_id);
+                println!("  operation: {op}");
+                println!("  input    : {input}");
+                println!("  from     : {}", &src[..8.min(src.len())]);
+
+                if auto_reply {
+                    let output = serde_json::json!({"status":"ok","handled_by":name,"operation":op});
+                    ipc_write(&mut w, serde_json::json!({
+                        "cmd": "reply_task",
+                        "task_id": task_id,
+                        "output_json": output.to_string(),
+                        "success": true,
+                    })).await?;
+                    let rep = ipc_read(&mut lines).await?;
+                    println!("  replied  : {rep}");
+                }
+                println!();
+            }
+            Some("task_result") => {
+                let task_id = event["task_id"].as_str().unwrap_or("?");
+                let output  = event["output_json"].as_str().unwrap_or("{}");
+                let ok      = event["success"].as_bool().unwrap_or(false);
+                println!("[{name}] [{ts}] RESULT  task_id={task_id}  success={ok}");
+                println!("  output: {output}\n");
+            }
+            _ => {}
+        }
+    }
+
+    println!("[{name}] Connection closed.");
+    Ok(())
+}
+
+async fn run_agent_send(name: &str, operation: &str, input: &str, target_name: Option<&str>, socket: &std::path::Path) -> Result<()> {
+    let (mut w, mut lines, uuid) = ipc_connect_and_register(socket, name, "sender").await?;
+    println!("[{name}] Registered  uuid={}", &uuid[..8.min(uuid.len())]);
+
+    // Resolve target by name if given
+    let target_uuid: Option<String> = if let Some(tgt) = target_name {
+        ipc_write(&mut w, serde_json::json!({"cmd":"get_registry"})).await?;
+        let resp = ipc_read(&mut lines).await?;
+        let agents = resp["agents"].as_array().cloned().unwrap_or_default();
+        let found = agents.iter()
+            .find(|a| a["agent_name"].as_str() == Some(tgt))
+            .and_then(|a| a["node_uuid"].as_str().map(|s| s.to_string()));
+        if found.is_none() {
+            let names: Vec<&str> = agents.iter()
+                .filter_map(|a| a["agent_name"].as_str())
+                .collect();
+            anyhow::bail!("Agent '{tgt}' not found in registry. Online: {:?}", names);
+        }
+        found
+    } else {
+        None
+    };
+
+    let ts = chrono::Utc::now().format("%H:%M:%S%.3f");
+    let cmd = if let Some(ref tu) = target_uuid {
+        println!("[{name}] [{ts}] SENDING → {}", target_name.unwrap_or("?"));
+        serde_json::json!({"cmd":"ask_agent","agent_uuid":tu,"operation":operation,"input_json":input})
+    } else {
+        println!("[{name}] [{ts}] BROADCASTING");
+        serde_json::json!({"cmd":"publish_task","operation":operation,"input_json":input})
+    };
+    println!("  operation: {operation}");
+    println!("  input    : {input}\n");
+
+    ipc_write(&mut w, cmd).await?;
+    let sent = ipc_read(&mut lines).await?;
+    let task_id = sent["task_id"].as_str().unwrap_or("?").to_string();
+    let ts2 = chrono::Utc::now().format("%H:%M:%S%.3f");
+    println!("[{name}] [{ts2}] Dispatched  task_id={task_id}");
+
+    // Subscribe to receive the reply
+    ipc_write(&mut w, serde_json::json!({"cmd":"subscribe_tasks"})).await?;
+    let _ = ipc_read(&mut lines).await?;
+    println!("[{name}] Waiting for reply (15s timeout)...\n");
+
+    let result = tokio::time::timeout(Duration::from_secs(15), async {
+        while let Ok(Some(line)) = lines.next_line().await {
+            let event: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+            if event["event"].as_str() == Some("task_result") {
+                return Some(event);
+            }
+        }
+        None
+    }).await;
+
+    match result {
+        Ok(Some(event)) => {
+            let ts3 = chrono::Utc::now().format("%H:%M:%S%.3f");
+            let output = event["output_json"].as_str().unwrap_or("{}");
+            let ok = event["success"].as_bool().unwrap_or(false);
+            println!("[{name}] [{ts3}] REPLY RECEIVED  success={ok}");
+            println!("  output: {output}");
+        }
+        Ok(None) => println!("[{name}] Connection closed — no reply received."),
+        Err(_) => println!("[{name}] Timeout — no reply after 15s."),
     }
 
     Ok(())
