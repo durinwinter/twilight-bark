@@ -202,7 +202,18 @@ impl IpcServer {
 
     async fn dispatch(&self, req: IpcRequest, registered: &mut Option<String>) -> IpcResponse {
         match req {
-            IpcRequest::Ping => IpcResponse::ok(),
+            IpcRequest::Ping => {
+                // Refresh last_seen so IPC agents aren't evicted by the cleanup loop
+                if let Some(uuid) = registered.as_ref() {
+                    let hb = twilight_proto::twilight::Heartbeat {
+                        node_id: uuid.clone(),
+                        timestamp_unix_ms: chrono::Utc::now().timestamp_millis(),
+                        ..Default::default()
+                    };
+                    self.controller.update_heartbeat(hb);
+                }
+                IpcResponse::ok()
+            }
 
             IpcRequest::SubscribeTasks => {
                 IpcResponse::err("subscribe_tasks must be sent before any other commands after registration — reconnect")

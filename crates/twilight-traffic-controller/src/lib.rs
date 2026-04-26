@@ -152,8 +152,19 @@ impl TrafficController {
         recipients
     }
 
+    /// Returns all identities, deduplicated by agent_name (most recently seen wins).
+    /// Prevents stale Zenoh-replayed presence entries from shadowing live agents.
     pub fn get_all_identities(&self) -> Vec<AgentIdentity> {
-        self.registry.iter().map(|entry| entry.value().identity.clone()).collect()
+        let mut by_name: std::collections::HashMap<String, (AgentIdentity, chrono::DateTime<Utc>)> =
+            std::collections::HashMap::new();
+        for entry in self.registry.iter() {
+            let name = entry.value().identity.agent_name.clone();
+            let seen = entry.value().last_seen;
+            if by_name.get(&name).map_or(true, |(_, prev)| seen > *prev) {
+                by_name.insert(name, (entry.value().identity.clone(), seen));
+            }
+        }
+        by_name.into_values().map(|(id, _)| id).collect()
     }
 
     pub fn get_registry_snapshot(&self) -> Vec<AgentSnapshot> {

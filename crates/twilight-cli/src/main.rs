@@ -394,9 +394,9 @@ async fn run_agent_send(name: &str, operation: &str, input: &str, target_name: O
     // Subscribe to receive the reply
     ipc_write(&mut w, serde_json::json!({"cmd":"subscribe_tasks"})).await?;
     let _ = ipc_read(&mut lines).await?;
-    println!("[{name}] Waiting for reply (15s timeout)...\n");
+    println!("[{name}] Waiting for reply (60s timeout)...\n");
 
-    let result = tokio::time::timeout(Duration::from_secs(15), async {
+    let result = tokio::time::timeout(Duration::from_secs(60), async {
         while let Ok(Some(line)) = lines.next_line().await {
             let event: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
             if event["event"].as_str() == Some("task_result") {
@@ -415,7 +415,7 @@ async fn run_agent_send(name: &str, operation: &str, input: &str, target_name: O
             println!("  output: {output}");
         }
         Ok(None) => println!("[{name}] Connection closed — no reply received."),
-        Err(_) => println!("[{name}] Timeout — no reply after 15s."),
+        Err(_) => println!("[{name}] Timeout — no reply after 60s."),
     }
 
     Ok(())
