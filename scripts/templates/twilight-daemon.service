@@ -1,13 +1,16 @@
 [Unit]
 Description=Twilight Bark Daemon
-After=network-online.target
-Wants=network-online.target
+# zenohd must be accepting connections before we open a Zenoh client session
+After=network-online.target zenohd.service
+Wants=network-online.target zenohd.service
 
 [Service]
 Type=simple
 ExecStart=%h/.cargo/bin/twilight-daemon --config %h/.config/twilight/daemon.toml
 Restart=on-failure
 RestartSec=5
+# Give zenohd 10 s to be fully ready after its own start
+ExecStartPre=/bin/sleep 2
 StandardOutput=journal
 StandardError=journal
 Environment=RUST_LOG=info

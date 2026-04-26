@@ -1,0 +1,21 @@
+[Unit]
+Description=Twilight Bark — LM Studio Bridge
+# Bridge needs the daemon socket to exist before connecting
+After=twilight-daemon.service
+Requires=twilight-daemon.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/python3 %h/.local/lib/twilight-bark/lmstudio-bridge.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+# Override any of these in ~/.config/twilight/bridge.env
+EnvironmentFile=-%h/.config/twilight/bridge.env
+Environment=RUST_LOG=warn
+Environment=LMS_URL=http://localhost:1234
+Environment=TWILIGHT_AGENT_NAME=lmstudio
+
+[Install]
+WantedBy=default.target

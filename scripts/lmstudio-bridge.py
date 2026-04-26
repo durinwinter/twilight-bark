@@ -113,24 +113,33 @@ class DaemonConn:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main():
-    model = resolve_model()
-    print(f"[bridge] Model: {model}", flush=True)
-    print(f"[bridge] Connecting to {SOCK}…", flush=True)
+RECONNECT_DELAY = 5   # seconds between reconnect attempts
+RECONNECT_MAX   = 60  # cap backoff at this many seconds
 
-    conn = DaemonConn(SOCK)
+
+def _run_once(model: str) -> bool:
+    """Connect, register, and serve until the daemon disconnects.
+    Returns True if we should reconnect, False to exit."""
+    print(f"[bridge] Connecting to {SOCK}…", flush=True)
+    try:
+        conn = DaemonConn(SOCK)
+    except Exception as e:
+        print(f"[bridge] Cannot connect to daemon: {e}", flush=True)
+        return True  # retry
 
     reg = conn.call({"cmd": "register", "name": AGENT_NAME, "role": "mcp-agent"})
     if not reg.get("ok"):
         print(f"[bridge] Registration failed: {reg}", flush=True)
-        sys.exit(1)
+        return True
+
     uuid = reg.get("agent_uuid", "?")
     print(f"[bridge] Registered as '{AGENT_NAME}'  uuid={uuid[:8]}", flush=True)
 
     ack = conn.call({"cmd": "subscribe_tasks"})
     if not ack.get("ok"):
         print(f"[bridge] subscribe_tasks failed: {ack}", flush=True)
-        sys.exit(1)
+        return True
+
     print("[bridge] Subscribed. Waiting for tasks…\n", flush=True)
 
     incoming: queue.Queue = queue.Queue()
@@ -148,11 +157,13 @@ def main():
 
     threading.Thread(target=reader, daemon=True).start()
 
-    # Keepalive — ping every PING_INTERVAL seconds so the cleanup loop keeps us
     def keepalive():
         while True:
             time.sleep(PING_INTERVAL)
-            conn.send({"cmd": "ping"})
+            try:
+                conn.send({"cmd": "ping"})
+            except Exception:
+                break
 
     threading.Thread(target=keepalive, daemon=True).start()
 
@@ -163,8 +174,8 @@ def main():
             continue
 
         if msg is None:
-            print("[bridge] Daemon closed connection. Exiting.", flush=True)
-            break
+            print("[bridge] Daemon closed connection — will reconnect.", flush=True)
+            return True  # reconnect
 
         if msg.get("event") != "task_request":
             continue  # ping acks or other responses
@@ -204,6 +215,22 @@ def main():
             "success": success,
         })
         print(f"[bridge] ✓ replied to {task_id[:8]}\n", flush=True)
+
+    return False  # unreachable but satisfies type checker
+
+
+def main():
+    model = resolve_model()
+    print(f"[bridge] Model: {model}", flush=True)
+
+    delay = RECONNECT_DELAY
+    while True:
+        should_reconnect = _run_once(model)
+        if not should_reconnect:
+            break
+        print(f"[bridge] Reconnecting in {delay}s…", flush=True)
+        time.sleep(delay)
+        delay = min(delay * 2, RECONNECT_MAX)
 
 
 if __name__ == "__main__":
