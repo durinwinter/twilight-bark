@@ -132,6 +132,12 @@ impl DaemonClient {
         Ok(())
     }
 
+    /// Return all currently in-flight tasks tracked by the daemon orchestrator.
+    pub async fn list_tasks(&self) -> Result<serde_json::Value> {
+        let resp = self.call(json!({"cmd":"list_tasks"})).await?;
+        Ok(resp["tasks"].clone())
+    }
+
     /// Drain and return all queued incoming task events (non-blocking).
     pub async fn get_pending_tasks(&self) -> Vec<serde_json::Value> {
         std::mem::take(&mut *self.task_queue.lock().await)

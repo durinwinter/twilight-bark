@@ -112,6 +112,14 @@ impl FabricHandler {
         serde_json::to_string(&tasks).unwrap_or_else(|_| "[]".to_string())
     }
 
+    #[tool(description = "List all tasks currently in-flight on the fabric: task_id, source, operation, elapsed_ms, timeout_ms. Use this to check whether a task is still pending, already replied, or timed out.")]
+    async fn list_tasks(&self) -> String {
+        match self.client.list_tasks().await {
+            Ok(v) => v.to_string(),
+            Err(e) => format!("{{\"error\":\"{e}\"}}"),
+        }
+    }
+
     #[tool(description = "Reply to an incoming task request. Use the task_id from a task_request event returned by get_pending_tasks.")]
     async fn reply_task(
         &self,

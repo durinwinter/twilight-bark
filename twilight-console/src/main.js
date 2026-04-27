@@ -72,6 +72,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let myUuid = null;
   let pendingTask = null;  // { task_id, from_name } waiting for human reply
+  let reconnectTimer = null;
+  let reconnectDelay = 2000;
+  const RECONNECT_MAX = 30000;
 
   // Derive a display name from the system username
   const humanName = await (async () => {
@@ -80,28 +83,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setChatConnected(uuid) {
     myUuid = uuid;
+    reconnectDelay = 2000;
     chatDot.style.background   = '#10b981';
     chatLabel.textContent      = `Connected as ${humanName} (${uuid.slice(0,8)})`;
     chatThread.innerHTML = '';
     appendSystemMsg('Connected to fabric. Select an agent or broadcast to all.');
   }
 
-  function setChatError(msg) {
-    chatDot.style.background   = '#ef4444';
-    chatLabel.textContent      = `Error: ${msg}`;
+  function setChatReconnecting(delayMs) {
+    myUuid = null;
+    chatDot.style.background   = '#f59e0b';
+    chatLabel.textContent      = `Reconnecting in ${Math.round(delayMs / 1000)}s…`;
   }
 
   async function connectDaemon() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     try {
       const uuid = await invoke('connect_daemon', { name: humanName });
       setChatConnected(uuid);
       await refreshTargets();
-    } catch (e) {
-      setChatError(String(e));
+    } catch (_) {
+      setChatReconnecting(reconnectDelay);
+      reconnectTimer = setTimeout(connectDaemon, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX);
     }
   }
 
-  // Connect as soon as the app starts
+  // Connect on startup; retry with backoff if daemon is offline
   connectDaemon();
 
   // Incoming fabric messages ─────────────────────────────────────────────────
@@ -470,7 +478,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           daemonBtn.style.background = '#ef4444';
           daemonBtn.disabled = false;
           setTimeout(refreshDaemonStatus, 1500);
-          setTimeout(connectDaemon, 2000); // reconnect chat after daemon restarts
+          reconnectDelay = 2000; // reset backoff before reconnecting
+          setTimeout(connectDaemon, 2000);
         } catch (e) {
           alert(`Failed to start daemon: ${e}`);
           daemonBtn.innerText = 'Start Daemon';

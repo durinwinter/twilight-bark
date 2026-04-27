@@ -1,5 +1,5 @@
 use crate::config::{DaemonConfig, NodeRole};
-use crate::ipc::IpcServer;
+use crate::ipc::{IpcServer, TaskRecord};
 use crate::process::ManagedProcess;
 use anyhow::Result;
 use futures::StreamExt;
@@ -11,7 +11,7 @@ use twilight_core::{create_node_identity, create_presence};
 use twilight_proto::twilight::{twilight_envelope::Payload, AgentStatus, TargetKind};
 use twilight_traffic_controller::TrafficController;
 use twilight_ziti::ZitiTunnel;
-use log::info;
+use log::{info, warn};
 
 pub struct TwilightDaemon {
     pid_path: PathBuf,
@@ -114,8 +114,13 @@ impl TwilightDaemon {
 
                                 // Only route if any target is subscribed
                                 if targets.iter().any(|u| ipc2.task_senders.contains_key(u)) {
-                                    // Record task_id → sender for reply routing
-                                    ipc2.pending_tasks.insert(req.task_id.clone(), source_uuid.clone());
+                                    // Record task_id in the orchestrator ledger for reply routing + timeout tracking
+                                    ipc2.pending_tasks.insert(req.task_id.clone(), TaskRecord {
+                                        source_uuid: source_uuid.clone(),
+                                        operation:   req.operation.clone(),
+                                        created_at:  std::time::Instant::now(),
+                                        timeout_ms:  req.timeout_ms as u64,
+                                    });
 
                                     let event = serde_json::json!({
                                         "event": "task_request",
@@ -134,6 +139,40 @@ impl TwilightDaemon {
                         }
                     }
                     Err(e) => log::error!("Traffic subscription failed: {e}"),
+                }
+            });
+        }
+
+        // 4c. Task orchestrator — push synthetic timeout results for stale tasks
+        {
+            let ipc3 = Arc::clone(&ipc);
+            tokio::spawn(async move {
+                let mut tick = tokio::time::interval(tokio::time::Duration::from_secs(1));
+                loop {
+                    tick.tick().await;
+                    let now = std::time::Instant::now();
+                    let expired: Vec<String> = ipc3.pending_tasks.iter()
+                        .filter(|e| {
+                            now.duration_since(e.value().created_at).as_millis() as u64
+                                >= e.value().timeout_ms
+                        })
+                        .map(|e| e.key().clone())
+                        .collect();
+
+                    for task_id in expired {
+                        if let Some((_, record)) = ipc3.pending_tasks.remove(&task_id) {
+                            warn!("Task {} timed out after {}ms (op={})",
+                                task_id, record.timeout_ms, record.operation);
+                            let event = serde_json::json!({
+                                "event":       "task_result",
+                                "task_id":     &task_id,
+                                "output_json": format!("{{\"error\":\"task timed out after {}ms\"}}", record.timeout_ms),
+                                "success":     false,
+                                "source_uuid": "daemon",
+                            });
+                            ipc3.push_task_event(&record.source_uuid, event);
+                        }
+                    }
                 }
             });
         }
