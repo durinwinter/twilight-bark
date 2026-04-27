@@ -29,3 +29,4 @@ twilight-proto = { path = "../../crates/twilight-proto" }
 twilight-traffic-controller = { path = "../../crates/twilight-traffic-controller" }
 twilight-core = { path = "../../crates/twilight-core" }
 twilight-ziti = { path = "../../crates/twilight-ziti" }
+twilight-mcp-server = { path = "../../crates/twilight-mcp-server" }
