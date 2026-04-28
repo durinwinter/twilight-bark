@@ -44,10 +44,10 @@ This roadmap outlines the evolution of Twilight Bark from its MVP state to a pro
 - [x] **Management Suite**: Participant Factory (pre-generates node enrollment slots), Network Provisioner.
 - [x] **Daemon Status Bar**: Sidebar indicator polls daemon health every 8 s via PID + socket liveness check.
 
-## Phase 5 (Scaling & Ecosystem) - Upcoming
+## Phase 5 (Scaling & Ecosystem) - In Progress
 *Focus: Broadening reach and integration points.*
 
-- [ ] **Python/JS Bridges**: Client libraries for non-Rust agent implementations.
+- [x] **Python/JS Bridges**: Client libraries for non-Rust agent implementations.
 - [ ] **Cloud Connectors**: Built-in adapters for AWS S3, Google Drive, and Notion.
 - [ ] **Task Orchestrator**: High-level state machine for complex, multi-agent workflows.
 - [ ] **AgentShield & Hook Architecture**: Decentralized tool security, `PreToolUse` and `PostToolUse` interception on the fabric, and red/blue vulnerability scanning of MCP definitions.

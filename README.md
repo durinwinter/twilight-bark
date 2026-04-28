@@ -27,6 +27,7 @@ Twilight Bark is organized into a modular Rust workspace:
 - `twilight-mcp-server`: Gateway for LLM-based agents to interact with the fabric via standardized tools.
 - `twilight-eventlog`: High-fidelity JSONL logging for all fabric traffic, designed for post-analysis and auditing.
 - `adapters/`: Specialized connectors for external systems (e.g., Filesystem, Obsidian).
+- `bridges/`: Lightweight Python and JavaScript daemon clients for non-Rust agents.
 
 ## Getting Started
 
@@ -84,6 +85,12 @@ Twilight Bark prioritizes observability.
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for the strategic vision and upcoming features.
+
+## Non-Rust Bridges
+
+Python and Node.js agents can connect through the daemon socket without linking
+Zenoh, OpenZiti, Protobuf, or Rust crates. See [docs/bridges.md](docs/bridges.md)
+for usage and examples.
 
 ## License
 
