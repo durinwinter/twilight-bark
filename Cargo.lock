@@ -6123,6 +6123,7 @@ dependencies = [
  "tokio",
  "twilight-bus",
  "twilight-core",
+ "twilight-mcp-server",
  "twilight-proto",
  "twilight-traffic-controller",
  "twilight-ziti",

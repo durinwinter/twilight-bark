@@ -47,7 +47,18 @@
       "Bash(awk '{print $1, $2, $9, $10, $11}')",
       "Bash(kill 99184)",
       "Bash(awk '{print $2, $9, $10, $11}')",
-      "Bash(TWILIGHT_AGENT_NAME=lmstudio RUST_LOG=warn timeout 3 /home/earthling/.local/bin/twilight-mcp-lmstudio)"
+      "Bash(TWILIGHT_AGENT_NAME=lmstudio RUST_LOG=warn timeout 3 /home/earthling/.local/bin/twilight-mcp-lmstudio)",
+      "Bash(lms --help)",
+      "Bash(lms ps *)",
+      "Bash(lms server *)",
+      "Bash(lms chat *)",
+      "Bash(awk '{print $2, $9, $11}')",
+      "Bash(echo \"bridge pid=$!\")",
+      "Bash(bash scripts/loop-test.sh)",
+      "Bash(systemctl --user status twilight-daemon)",
+      "Bash(systemctl status *)",
+      "Bash(cargo clean *)",
+      "Bash(sort echo *)"
     ]
   }
 }
