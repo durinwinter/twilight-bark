@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::Utc;
 use dashmap::DashMap;
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
@@ -12,21 +13,20 @@ use tokio::sync::mpsc;
 use twilight_bus::TwilightBus;
 use twilight_core::{create_node_identity, create_presence};
 use twilight_proto::twilight::{
-    twilight_envelope::Payload, AgentStatus, MessageKind, MessageTarget, TargetKind, TaskRequest,
-    TaskResult, TwilightEnvelope,
+    twilight_envelope::Payload, AgentIdentity, AgentStatus, MessageKind, MessageTarget, TargetKind,
+    TaskRequest, TaskResult, TwilightEnvelope,
 };
 use twilight_traffic_controller::TrafficController;
 use uuid::Uuid;
-use log::{error, info, warn};
 
 // ── Task tracking record ──────────────────────────────────────────────────────
 
 /// Tracks an in-flight task from the moment it's dispatched until replied or timed out.
 pub struct TaskRecord {
     pub source_uuid: String,
-    pub operation:   String,
-    pub created_at:  Instant,
-    pub timeout_ms:  u64,
+    pub operation: String,
+    pub created_at: Instant,
+    pub timeout_ms: u64,
 }
 
 // ── IPC request types ─────────────────────────────────────────────────────────
@@ -34,15 +34,39 @@ pub struct TaskRecord {
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 enum IpcRequest {
-    Register { name: String, role: String },
+    Register {
+        name: String,
+        role: String,
+        #[serde(default)]
+        llm_provider: Option<String>,
+        #[serde(default)]
+        llm_service: Option<String>,
+        #[serde(default)]
+        model_name: Option<String>,
+        #[serde(default)]
+        model_uuid: Option<String>,
+        #[serde(default)]
+        snapshot_ref: Option<String>,
+    },
     GetRegistry,
-    PublishTask { operation: String, input_json: String },
-    AskAgent { agent_uuid: String, operation: String, input_json: String },
+    PublishTask {
+        operation: String,
+        input_json: String,
+    },
+    AskAgent {
+        agent_uuid: String,
+        operation: String,
+        input_json: String,
+    },
     /// Subscribe to task events. After the {"ok":true} ack the daemon will push
     /// {"event":"task_request",...} and {"event":"task_result",...} JSON lines.
     SubscribeTasks,
     /// Send a TaskResult back to the original requester of a task.
-    ReplyTask { task_id: String, output_json: String, success: bool },
+    ReplyTask {
+        task_id: String,
+        output_json: String,
+        success: bool,
+    },
     /// Return all currently in-flight tasks with their elapsed time.
     ListTasks,
     Ping,
@@ -64,9 +88,18 @@ struct IpcResponse {
 }
 
 impl IpcResponse {
-    fn ok() -> Self { Self { ok: true, ..Default::default() } }
+    fn ok() -> Self {
+        Self {
+            ok: true,
+            ..Default::default()
+        }
+    }
     fn err(msg: impl Into<String>) -> Self {
-        Self { ok: false, error: Some(msg.into()), ..Default::default() }
+        Self {
+            ok: false,
+            error: Some(msg.into()),
+            ..Default::default()
+        }
     }
 }
 
@@ -138,30 +171,28 @@ impl IpcServer {
         // ── Phase 1: request/response until subscribe_tasks ──────────────────
         let push_rx = loop {
             match lines.next_line().await {
-                Ok(Some(ref line)) => {
-                    match serde_json::from_str::<IpcRequest>(line) {
-                        Ok(IpcRequest::SubscribeTasks) => {
-                            let uuid = match registered.as_ref() {
-                                Some(u) => u.clone(),
-                                None => {
-                                    write_resp(&mut w, IpcResponse::err("must register first")).await?;
-                                    continue;
-                                }
-                            };
-                            let (tx, rx) = mpsc::channel(64);
-                            self.task_senders.insert(uuid, tx);
-                            write_resp(&mut w, IpcResponse::ok()).await?;
-                            break rx;
-                        }
-                        Ok(req) => {
-                            let resp = self.dispatch(req, &mut registered).await;
-                            write_resp(&mut w, resp).await?;
-                        }
-                        Err(e) => {
-                            write_resp(&mut w, IpcResponse::err(format!("parse error: {e}"))).await?;
-                        }
+                Ok(Some(ref line)) => match serde_json::from_str::<IpcRequest>(line) {
+                    Ok(IpcRequest::SubscribeTasks) => {
+                        let uuid = match registered.as_ref() {
+                            Some(u) => u.clone(),
+                            None => {
+                                write_resp(&mut w, IpcResponse::err("must register first")).await?;
+                                continue;
+                            }
+                        };
+                        let (tx, rx) = mpsc::channel(64);
+                        self.task_senders.insert(uuid, tx);
+                        write_resp(&mut w, IpcResponse::ok()).await?;
+                        break rx;
                     }
-                }
+                    Ok(req) => {
+                        let resp = self.dispatch(req, &mut registered).await;
+                        write_resp(&mut w, resp).await?;
+                    }
+                    Err(e) => {
+                        write_resp(&mut w, IpcResponse::err(format!("parse error: {e}"))).await?;
+                    }
+                },
                 _ => {
                     self.cleanup(&registered).await;
                     return Ok(());
@@ -232,13 +263,41 @@ impl IpcServer {
                 IpcResponse::err("subscribe_tasks must be sent before any other commands after registration — reconnect")
             }
 
-            IpcRequest::Register { name, role } => {
-                let identity = create_node_identity(&name, &role, &self.node_id, &self.tenant);
+            IpcRequest::Register {
+                name,
+                role,
+                llm_provider,
+                llm_service,
+                model_name,
+                model_uuid,
+                snapshot_ref,
+            } => {
+                let prior_identity = self
+                    .controller
+                    .get_all_identities()
+                    .into_iter()
+                    .find(|identity| identity.agent_name == name);
+                let mut identity = create_node_identity(&name, &role, &self.node_id, &self.tenant);
+                apply_optional_model_identity(
+                    &mut identity,
+                    llm_provider,
+                    llm_service,
+                    model_name,
+                    model_uuid,
+                );
                 let uuid = identity.node_uuid.clone();
                 *registered = Some(uuid.clone());
                 let presence = create_presence(identity.clone(), AgentStatus::Online);
                 let _ = self.bus.publish_presence(&presence).await;
                 self.controller.update_presence(presence);
+                if let Some(prior) = prior_identity.as_ref() {
+                    if let Err(error) = self
+                        .publish_identity_continuity_event(prior, &identity, snapshot_ref.as_deref())
+                        .await
+                    {
+                        warn!("Identity continuity event publish failed: {error}");
+                    }
+                }
                 info!("Registered agent '{}' uuid={}", name, uuid);
                 IpcResponse { ok: true, agent_uuid: Some(uuid), ..Default::default() }
             }
@@ -350,26 +409,26 @@ impl IpcServer {
         input_json: &str,
         target: MessageTarget,
     ) -> anyhow::Result<String> {
-        let task_id    = Uuid::new_v4().to_string();
+        let task_id = Uuid::new_v4().to_string();
         let timeout_ms: i64 = 30_000;
         let source = self.controller.get_identity(src_uuid).unwrap_or_else(|| {
             create_node_identity("unknown", "unknown", &self.node_id, &self.tenant)
         });
 
         let envelope = TwilightEnvelope {
-            message_uuid:     Uuid::new_v4().to_string(),
+            message_uuid: Uuid::new_v4().to_string(),
             correlation_uuid: task_id.clone(),
-            causation_uuid:   String::new(),
-            source:           Some(source),
-            target:           Some(target),
-            kind:             MessageKind::TaskRequest as i32,
-            priority:         2,
-            created_unix_ms:  Utc::now().timestamp_millis(),
-            expires_unix_ms:  Utc::now().timestamp_millis() + timeout_ms as i64,
-            tags:             Vec::new(),
-            payload:          Some(Payload::TaskRequest(TaskRequest {
-                task_id:    task_id.clone(),
-                operation:  operation.to_string(),
+            causation_uuid: String::new(),
+            source: Some(source),
+            target: Some(target),
+            kind: MessageKind::TaskRequest as i32,
+            priority: 2,
+            created_unix_ms: Utc::now().timestamp_millis(),
+            expires_unix_ms: Utc::now().timestamp_millis() + timeout_ms as i64,
+            tags: Vec::new(),
+            payload: Some(Payload::TaskRequest(TaskRequest {
+                task_id: task_id.clone(),
+                operation: operation.to_string(),
                 input_json: input_json.to_string(),
                 timeout_ms,
             })),
@@ -378,14 +437,46 @@ impl IpcServer {
         self.bus.publish_envelope(&envelope).await?;
 
         // Register in the orchestrator's task ledger
-        self.pending_tasks.insert(task_id.clone(), TaskRecord {
-            source_uuid: src_uuid.to_string(),
-            operation:   operation.to_string(),
-            created_at:  Instant::now(),
-            timeout_ms:  timeout_ms as u64,
-        });
+        self.pending_tasks.insert(
+            task_id.clone(),
+            TaskRecord {
+                source_uuid: src_uuid.to_string(),
+                operation: operation.to_string(),
+                created_at: Instant::now(),
+                timeout_ms: timeout_ms as u64,
+            },
+        );
 
         Ok(task_id)
+    }
+
+    async fn publish_identity_continuity_event(
+        &self,
+        prior: &AgentIdentity,
+        current: &AgentIdentity,
+        snapshot_ref: Option<&str>,
+    ) -> anyhow::Result<Option<String>> {
+        if !identity_model_changed(prior, current) || !has_model_identity(prior) {
+            return Ok(None);
+        }
+
+        let payload = identity_continuity_payload(
+            prior,
+            current,
+            snapshot_ref,
+            Utc::now().timestamp_millis(),
+        );
+        let mut target = MessageTarget::default();
+        target.target_kind = TargetKind::Broadcast as i32;
+        let task_id = self
+            .send_task_envelope(
+                &current.node_uuid,
+                "identity_continuity_event",
+                &serde_json::to_string(&payload)?,
+                target,
+            )
+            .await?;
+        Ok(Some(task_id))
     }
 }
 
@@ -394,4 +485,128 @@ async fn write_resp(w: &mut tokio::net::unix::OwnedWriteHalf, resp: IpcResponse)
     out.push('\n');
     w.write_all(out.as_bytes()).await?;
     Ok(())
+}
+
+fn apply_optional_model_identity(
+    identity: &mut AgentIdentity,
+    llm_provider: Option<String>,
+    llm_service: Option<String>,
+    model_name: Option<String>,
+    model_uuid: Option<String>,
+) {
+    if let Some(value) = llm_provider {
+        identity.llm_provider = value;
+    }
+    if let Some(value) = llm_service {
+        identity.llm_service = value;
+    }
+    if let Some(value) = model_name {
+        identity.model_name = value;
+    }
+    if let Some(value) = model_uuid {
+        identity.model_uuid = value;
+    }
+}
+
+fn has_model_identity(identity: &AgentIdentity) -> bool {
+    [
+        &identity.llm_provider,
+        &identity.llm_service,
+        &identity.model_name,
+        &identity.model_uuid,
+    ]
+    .iter()
+    .any(|value| !value.trim().is_empty())
+}
+
+fn identity_model_changed(prior: &AgentIdentity, current: &AgentIdentity) -> bool {
+    prior.llm_provider != current.llm_provider
+        || prior.llm_service != current.llm_service
+        || prior.model_name != current.model_name
+        || prior.model_uuid != current.model_uuid
+}
+
+fn model_identity_json(identity: &AgentIdentity) -> serde_json::Value {
+    json!({
+        "llm_provider": identity.llm_provider,
+        "llm_service": identity.llm_service,
+        "model_name": identity.model_name,
+        "model_uuid": identity.model_uuid,
+    })
+}
+
+fn model_identity_label(identity: &AgentIdentity) -> String {
+    [
+        identity.llm_provider.as_str(),
+        identity.llm_service.as_str(),
+        identity.model_name.as_str(),
+        identity.model_uuid.as_str(),
+    ]
+    .into_iter()
+    .filter(|value| !value.trim().is_empty())
+    .collect::<Vec<_>>()
+    .join(":")
+}
+
+fn identity_continuity_payload(
+    prior: &AgentIdentity,
+    current: &AgentIdentity,
+    snapshot_ref: Option<&str>,
+    changed_at_unix_ms: i64,
+) -> serde_json::Value {
+    json!({
+        "schema": "twilight.identity_continuity_event.v1",
+        "event_type": "identity_continuity_event",
+        "agent_uuid": &current.agent_uuid,
+        "agent_name": &current.agent_name,
+        "role": &current.role,
+        "node_id": &current.node_id,
+        "tenant": &current.tenant,
+        "prior_model_id": model_identity_label(prior),
+        "new_model_id": model_identity_label(current),
+        "prior": model_identity_json(prior),
+        "new": model_identity_json(current),
+        "continuity_check_pending": true,
+        "snapshot_ref": snapshot_ref.unwrap_or_default(),
+        "changed_at_unix_ms": changed_at_unix_ms,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_continuity_payload_records_prior_and_new_model_identity() {
+        let mut prior = create_node_identity("coobie", "pack_chat", "node-a", "default");
+        prior.llm_provider = "anthropic".to_string();
+        prior.model_name = "claude-sonnet-4".to_string();
+        let mut current = prior.clone();
+        current.model_name = "claude-sonnet-4.5".to_string();
+
+        assert!(identity_model_changed(&prior, &current));
+        assert!(has_model_identity(&prior));
+
+        let payload = identity_continuity_payload(
+            &prior,
+            &current,
+            Some("twilight://snapshots/coobie/42"),
+            1_772_560_000_000,
+        );
+
+        assert_eq!(
+            payload["schema"].as_str(),
+            Some("twilight.identity_continuity_event.v1")
+        );
+        assert_eq!(payload["agent_name"].as_str(), Some("coobie"));
+        assert_eq!(
+            payload["prior"]["model_name"].as_str(),
+            Some("claude-sonnet-4")
+        );
+        assert_eq!(
+            payload["new"]["model_name"].as_str(),
+            Some("claude-sonnet-4.5")
+        );
+        assert_eq!(payload["continuity_check_pending"].as_bool(), Some(true));
+    }
 }
